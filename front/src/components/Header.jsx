@@ -32,7 +32,7 @@ function Header({ onNavigate, currentPage }) {
         </button>
 
         <nav className={`nav ${isMenuOpen ? "is-open" : ""}`}>
-          <a href="#" onClick={(event) => handleNavigate(event, "home")} className={currentPage === "home" ? "is-active" : ""}>Каталог</a>
+          <a href="#" onClick={(event) => handleNavigate(event, "catalog")} className={currentPage === "catalog" ? "is-active" : ""}>Каталог</a>
           <a href="#" onClick={(event) => handleNavigate(event, "home")} className={currentPage === "home" ? "is-active" : ""}>О нас</a>
           <a href="#" onClick={(event) => handleNavigate(event, "cart")} className={currentPage === "cart" ? "is-active" : ""}>Корзина</a>
           <a href="#" onClick={(event) => handleNavigate(event, "home")} className={currentPage === "home" ? "is-active" : ""}>Главная</a>
@@ -40,7 +40,14 @@ function Header({ onNavigate, currentPage }) {
 
         <div className="actions">
           <input type="text" placeholder="Поиск" />
-          <div className="profile"><img src="./src/assets/Vector.png" alt="" className="profileImg"></img></div>
+          <button
+            type="button"
+            className="profile"
+            onClick={(event) => handleNavigate(event, "register")}
+            aria-label="Открыть страницу регистрации"
+          >
+            <img src="./src/assets/Vector.png" alt="" className="profileImg"></img>
+          </button>
         </div>
       </div>
     </header>

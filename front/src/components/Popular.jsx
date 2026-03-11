@@ -3,7 +3,7 @@ import "../main.css";
 import BuyButton from "./buy_button";
 
 
-const Popular = ({ onAddToCart }) => {
+const Popular = ({ onAddToCart, goToCatalog }) => {
     const [product, setProduct] = useState([]);
     useEffect(() => {
         fetch("../src/popular.json")
@@ -35,7 +35,9 @@ const Popular = ({ onAddToCart }) => {
                     </div>
                 ))}
             </div>
-                        <button className="popular-button" onClick={() => {goToCatalog}}>Показать все</button> 
+            <button className="popular-button" onClick={goToCatalog}>
+                Показать все
+            </button>
         </section>
     );
 }}

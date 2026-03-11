@@ -9,6 +9,8 @@ import Gallery from "./components/Gallery";
 import Location from "./components/Location";
 import Footer from "./components/Footer";
 import CartPage from "./components/CartPage";
+import CatalogPage from "./components/CatalogPage";
+import RegisterPage from "./components/RegisterPage";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
@@ -25,6 +27,10 @@ export default function App() {
       return [...prev, { ...product, qty: 1 }];
     });
     setCurrentPage("cart");
+  };
+
+  const goToCatalog = () => {
+    setCurrentPage("catalog");
   };
 
   const increaseQty = (id) => {
@@ -45,13 +51,19 @@ export default function App() {
     setCartItems((prev) => prev.filter((item) => item.id !== id));
   };
 
+  if (currentPage === "register") {
+    return <RegisterPage onOpenLogin={() => setCurrentPage("home")} />;
+  }
+
   return (
     <div className="page">
       <Header onNavigate={setCurrentPage} currentPage={currentPage} />
-      {currentPage === "home" ? (
+      {currentPage === "catalog" ? (
+        <CatalogPage onAddToCart={addToCart} />
+      ) : currentPage === "home" ? (
         <>
           <Main1 />
-          <Popular onAddToCart={addToCart} />
+          <Popular onAddToCart={addToCart} goToCatalog={goToCatalog} />
           <Benefits />
           <FAQ />
           <Gallery />

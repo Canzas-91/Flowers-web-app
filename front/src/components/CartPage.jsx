@@ -7,9 +7,6 @@ const CartPage = ({ items, onIncrease, onDecrease, onRemove, onContinueShopping 
     <section className="cart-page" aria-label="Корзина">
       <div className="cart-header-row">
         <h1 className="cart-title">Корзина</h1>
-        <button className="cart-continue" type="button" onClick={onContinueShopping}>
-          Продолжить покупки
-        </button>
       </div>
 
       <div className="cart-layout">
@@ -52,13 +49,18 @@ const CartPage = ({ items, onIncrease, onDecrease, onRemove, onContinueShopping 
         </div>
 
         <aside className="cart-sidebar">
-          <div className="cart-total">
-            <p>Сумма</p>
-            <strong>{total} ₽</strong>
-          </div>
-          <button className="cart-pay" type="button">
-            Оплатить
+          <button className="cart-continue" type="button" onClick={onContinueShopping}>
+            Продолжить покупки
           </button>
+          <div className="cart-divider">
+            <div className="cart-total">
+              <p>Сумма</p>
+              <strong>{total} ₽</strong>
+            </div>
+            <button className="cart-pay" type="button">
+              Оплатить
+            </button>
+          </div>
         </aside>
       </div>
     </section>
