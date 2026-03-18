@@ -1009,6 +1009,20 @@ body {
   letter-spacing: 0.06em;
 }
 
+.register-message {
+  margin: -4px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.register-message-error {
+  color: #c4436a;
+}
+
+.register-message-success {
+  color: #4c7c58;
+}
+
 .register-submit {
   width: 100%;
   margin-top: 4px;
@@ -1019,6 +1033,13 @@ body {
   color: #fff;
   font-size: 16px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.register-submit:disabled,
+.register-form input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .register-login-link {
