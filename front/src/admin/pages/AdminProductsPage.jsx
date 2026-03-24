@@ -163,7 +163,7 @@ export function AdminProductsPage() {
           <div className="adminCard adminCol6">
             <div style={{ fontWeight: 700, marginBottom: 8 }}>All products</div>
             {isLoading ? (
-              <div style={{ color: "rgba(255,255,255,0.72)" }}>Loading…</div>
+              <div style={{ color: "rgba(255,255,255,0.72)" }}>Loading...</div>
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table className="adminTable" aria-label="Products table">
@@ -215,4 +215,3 @@ export function AdminProductsPage() {
     </div>
   );
 }
-

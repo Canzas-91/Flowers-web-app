@@ -95,7 +95,7 @@ export function AdminOrdersPage() {
         <div style={{ marginTop: 14, overflowX: "auto" }}>
           {isLoading ? (
             <div style={{ color: "rgba(255,255,255,0.72)", padding: 8 }}>
-              Loading…
+              Loading...
             </div>
           ) : (
             <table className="adminTable" aria-label="Orders table">
@@ -116,7 +116,7 @@ export function AdminOrdersPage() {
                   return (
                     <tr key={o.id}>
                       <td>#{o.id}</td>
-                      <td>{o.created_at ? new Date(o.created_at).toLocaleString() : "—"}</td>
+                      <td>{o.created_at ? new Date(o.created_at).toLocaleString() : "-"}</td>
                       <td>
                         <span className={`adminBadge ${meta.badge}`}>{meta.label}</span>
                       </td>
@@ -125,7 +125,7 @@ export function AdminOrdersPage() {
                         <div style={{ display: "grid", gap: 6 }}>
                           {(o.items ?? []).map((it, idx) => (
                             <div key={`${o.id}-${idx}`} style={{ color: "rgba(255,255,255,0.78)" }}>
-                              {it.flower?.name ?? "—"} × {it.qty}{" "}
+                              {it.flower?.name ?? "-"} x {it.qty}{" "}
                               <span style={{ color: "rgba(255,255,255,0.55)" }}>
                                 @ {Number(it.unit_price).toFixed(2)}
                               </span>
@@ -165,4 +165,3 @@ export function AdminOrdersPage() {
     </div>
   );
 }
-

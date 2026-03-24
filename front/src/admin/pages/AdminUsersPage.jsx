@@ -58,7 +58,7 @@ export function AdminUsersPage() {
         <div style={{ marginTop: 14, overflowX: "auto" }}>
           {isLoading ? (
             <div style={{ color: "rgba(255,255,255,0.72)", padding: 8 }}>
-              Loading…
+              Loading...
             </div>
           ) : (
             <table className="adminTable" aria-label="Users table">
@@ -81,7 +81,7 @@ export function AdminUsersPage() {
                         {u.role}
                       </span>
                     </td>
-                    <td>{u.created_at ? new Date(u.created_at).toLocaleString() : "—"}</td>
+                    <td>{u.created_at ? new Date(u.created_at).toLocaleString() : "-"}</td>
                     <td>
                       <button
                         type="button"
@@ -110,4 +110,3 @@ export function AdminUsersPage() {
     </div>
   );
 }
-

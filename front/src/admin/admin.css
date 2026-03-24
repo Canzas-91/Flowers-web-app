@@ -155,8 +155,16 @@
   grid-column: span 4;
 }
 
+.adminCol5 {
+  grid-column: span 5;
+}
+
 .adminCol6 {
   grid-column: span 6;
+}
+
+.adminCol7 {
+  grid-column: span 7;
 }
 
 .adminCol12 {
@@ -280,9 +288,25 @@
   .adminShell {
     grid-template-columns: 1fr;
   }
+
   .adminSidebar {
     position: relative;
     height: auto;
   }
-}
 
+  .adminMain {
+    padding: 18px 16px 32px;
+  }
+
+  .adminTopbar {
+    flex-wrap: wrap;
+  }
+
+  .adminCol4,
+  .adminCol5,
+  .adminCol6,
+  .adminCol7,
+  .adminCol12 {
+    grid-column: span 12;
+  }
+}

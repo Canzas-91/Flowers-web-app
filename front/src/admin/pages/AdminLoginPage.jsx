@@ -27,7 +27,7 @@ export function AdminLoginPage() {
 
       const me = await adminMe();
       if (me?.role !== "admin") {
-        throw new Error("Этот аккаунт не является администратором.");
+        throw new Error("This account does not have administrator access.");
       }
 
       navigate("/admin/dashboard");
@@ -43,11 +43,11 @@ export function AdminLoginPage() {
       <div className="adminLoginCard">
         <div style={{ fontWeight: 800, fontSize: 20 }}>Admin sign in</div>
         <div className="adminHelp">
-          Для демо используется bootstrap админ в backend: <b>admin/admin</b>
+          Demo credentials from backend bootstrap: <b>admin/admin</b>
         </div>
         {error ? (
           <div style={{ marginTop: 10, color: "rgba(255,255,255,0.92)" }}>
-            <span className="adminBadge adminBadgeDanger">Ошибка</span>{" "}
+            <span className="adminBadge adminBadgeDanger">Error</span>{" "}
             <span style={{ color: "rgba(255,255,255,0.78)" }}>{error}</span>
           </div>
         ) : null}
@@ -75,7 +75,7 @@ export function AdminLoginPage() {
 
           <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
             <button type="submit" className="adminBtn adminBtnPrimary">
-              {isSubmitting ? "Signing in…" : "Sign in"}
+              {isSubmitting ? "Signing in..." : "Sign in"}
             </button>
             <button
               type="button"
@@ -91,4 +91,3 @@ export function AdminLoginPage() {
     </div>
   );
 }
-

@@ -40,7 +40,7 @@ export function RequireAdmin({ children }) {
   if (state.status === "checking") {
     return (
       <div style={{ padding: 24, color: "rgba(255,255,255,0.78)" }}>
-        Checking access…
+        Checking access...
       </div>
     );
   }
@@ -62,4 +62,3 @@ export function RequireAdmin({ children }) {
 
   return children;
 }
-

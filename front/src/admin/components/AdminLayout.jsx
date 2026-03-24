@@ -37,7 +37,7 @@ export function AdminLayout() {
               className={({ isActive }) => (isActive ? "adminNavActive" : "")}
             >
               <span>{item.label}</span>
-              <span aria-hidden="true">→</span>
+              <span aria-hidden="true">-&gt;</span>
             </NavLink>
           ))}
         </nav>
@@ -74,4 +74,3 @@ export function AdminLayout() {
     </div>
   );
 }
-

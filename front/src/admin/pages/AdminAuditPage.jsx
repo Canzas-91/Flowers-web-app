@@ -3,7 +3,7 @@ import "../admin.css";
 import { adminListAudit } from "../api/adminApi";
 
 function prettyJson(value) {
-  if (value == null) return "—";
+  if (value == null) return "-";
   try {
     return JSON.stringify(value, null, 2);
   } catch {
@@ -48,7 +48,7 @@ export function AdminAuditPage() {
       <div className="adminCard adminCol7">
         <div style={{ fontWeight: 800, fontSize: 18 }}>Audit log</div>
         <div style={{ color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
-          Admin actions history (orders/users/products).
+          Admin actions history (orders, users, products).
         </div>
 
         {error ? (
@@ -61,7 +61,7 @@ export function AdminAuditPage() {
         <div style={{ marginTop: 14, overflowX: "auto" }}>
           {isLoading ? (
             <div style={{ color: "rgba(255,255,255,0.72)", padding: 8 }}>
-              Loading…
+              Loading...
             </div>
           ) : (
             <table className="adminTable" aria-label="Audit log table">
@@ -86,7 +86,7 @@ export function AdminAuditPage() {
                     }}
                   >
                     <td>#{r.id}</td>
-                    <td>{r.created_at ? new Date(r.created_at).toLocaleString() : "—"}</td>
+                    <td>{r.created_at ? new Date(r.created_at).toLocaleString() : "-"}</td>
                     <td>{r.actor_username}</td>
                     <td>
                       <span className="adminBadge">{r.action}</span>
@@ -116,7 +116,7 @@ export function AdminAuditPage() {
         <div style={{ fontWeight: 700, marginBottom: 8 }}>Details</div>
         {!selected ? (
           <div style={{ color: "rgba(255,255,255,0.68)", lineHeight: 1.5 }}>
-            Select an event to see before/after payload.
+            Select an event to see before and after payloads.
           </div>
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
@@ -174,4 +174,3 @@ export function AdminAuditPage() {
     </div>
   );
 }
-

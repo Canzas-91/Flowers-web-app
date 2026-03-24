@@ -59,16 +59,16 @@ export function AdminDashboardPage() {
       <div className="adminCard adminCol4">
         <div className="adminMetricLabel">Revenue</div>
         <div className="adminMetricValue">
-          {isLoading ? "…" : metrics.revenue.toFixed(2)}
+          {isLoading ? "..." : metrics.revenue.toFixed(2)}
         </div>
       </div>
       <div className="adminCard adminCol4">
         <div className="adminMetricLabel">Orders total</div>
-        <div className="adminMetricValue">{isLoading ? "…" : metrics.count}</div>
+        <div className="adminMetricValue">{isLoading ? "..." : metrics.count}</div>
       </div>
       <div className="adminCard adminCol4">
-        <div className="adminMetricLabel">Average чек</div>
-        <div className="adminMetricValue">{isLoading ? "…" : metrics.avg.toFixed(2)}</div>
+        <div className="adminMetricLabel">Average order value</div>
+        <div className="adminMetricValue">{isLoading ? "..." : metrics.avg.toFixed(2)}</div>
       </div>
 
       <div className="adminCard adminCol12">
@@ -88,10 +88,10 @@ export function AdminDashboardPage() {
         )}
 
         <div style={{ marginTop: 12, color: "rgba(255,255,255,0.68)", lineHeight: 1.5 }}>
-          Демо-дашборд строится на текущем `/admin/orders` (без дополнительных backend-метрик).
+          This demo dashboard is calculated from the current `/admin/orders` response
+          and does not use dedicated backend metrics yet.
         </div>
       </div>
     </div>
   );
 }
-
