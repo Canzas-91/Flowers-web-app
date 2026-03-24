@@ -102,6 +102,7 @@ export function AdminOrdersPage() {
               <thead>
                 <tr>
                   <th style={{ width: 90 }}>ID</th>
+                  <th style={{ width: 180 }}>Customer</th>
                   <th style={{ width: 170 }}>Created</th>
                   <th style={{ width: 130 }}>Status</th>
                   <th style={{ width: 120 }}>Total</th>
@@ -116,6 +117,14 @@ export function AdminOrdersPage() {
                   return (
                     <tr key={o.id}>
                       <td>#{o.id}</td>
+                      <td>
+                        <div style={{ fontWeight: 700 }}>
+                          {o.user_username || "Unknown user"}
+                        </div>
+                        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
+                          ID: {o.user_id ?? "-"}
+                        </div>
+                      </td>
                       <td>{o.created_at ? new Date(o.created_at).toLocaleString() : "-"}</td>
                       <td>
                         <span className={`adminBadge ${meta.badge}`}>{meta.label}</span>
@@ -152,7 +161,7 @@ export function AdminOrdersPage() {
                 })}
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ color: "rgba(255,255,255,0.68)" }}>
+                    <td colSpan={7} style={{ color: "rgba(255,255,255,0.68)" }}>
                       No orders found.
                     </td>
                   </tr>

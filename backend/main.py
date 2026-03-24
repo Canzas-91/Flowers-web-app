@@ -25,6 +25,10 @@ from models import (
     UserModel,
     UserRole,
 )
+from prompts import (
+    CRITERIA_EXTRACTION_SYSTEM_PROMPT,
+    RECOMMENDATION_SYSTEM_PROMPT,
+)
 
 
 app = FastAPI()
@@ -219,6 +223,8 @@ class OrderOut(BaseModel):
     id: int
     status: OrderStatus
     created_at: datetime
+    user_id: int | None = None
+    user_username: str | None = None
     items: list[OrderItemOut]
 
 
@@ -372,22 +378,7 @@ def _extract_criteria_with_ollama(messages: list[AssistantMessageIn]) -> dict:
     prompt = [
         {
             "role": "system",
-            "content": (
-                "Ты извлекаешь параметры для подбора букетов из диалога пользователя.\n"
-                "Верни только JSON со строго такими полями:\n"
-                "style: string|null\n"
-                "recipient: string|null\n"
-                "budget_text: string|null\n"
-                "budget_max: number|null\n"
-                "needs_budget: boolean\n"
-                "clarification_question: string|null\n"
-                "search_summary: string\n"
-                "Считай фразы вроде 'недорого', 'бюджетно', 'дешево' бюджетным запросом.\n"
-                "Если бюджета совсем нет, то needs_budget=true и clarification_question="
-                "'Подскажите, пожалуйста, в каком бюджете подобрать варианты?'\n"
-                "Если бюджет выражен словами, оцени его числом budget_max.\n"
-                "Если данных достаточно, needs_budget=false."
-            ),
+            "content": CRITERIA_EXTRACTION_SYSTEM_PROMPT,
         },
         {"role": "user", "content": conversation},
     ]
@@ -527,11 +518,7 @@ def _build_assistant_reply(
     prompt = [
         {
             "role": "system",
-            "content": (
-                "Ты консультант цветочного магазина. Отвечай по-русски, кратко и по делу. "
-                "Используй только товары из списка, не выдумывай позиции и цены. "
-                "Сделай короткую рекомендацию и упомяни 2-3 лучших варианта."
-            ),
+            "content": RECOMMENDATION_SYSTEM_PROMPT,
         },
         {
             "role": "user",
@@ -548,6 +535,32 @@ def _build_assistant_reply(
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/assistant/health")
+def assistant_health() -> dict:
+    prompt = [
+        {
+            "role": "system",
+            "content": "Ответь одним словом ok.",
+        },
+        {
+            "role": "user",
+            "content": "ping",
+        },
+    ]
+    try:
+        reply = _call_ollama(messages=prompt, json_mode=False, temperature=0).strip()
+    except HTTPException:
+        raise
+
+    return {
+        "status": "ok",
+        "provider": "ollama",
+        "model": OLLAMA_MODEL,
+        "base_url": OLLAMA_BASE_URL,
+        "reply": reply,
+    }
 
 
 @app.post("/assistant/chat", response_model=AssistantChatResponse)
@@ -950,7 +963,10 @@ def get_order(order_id: int, current_user: UserModel = Depends(get_current_user)
 def admin_list_orders(_: UserModel = Depends(require_admin), db: Session = Depends(get_db)) -> list[OrderOut]:
     orders = (
         db.query(OrderModel)
-        .options(joinedload(OrderModel.items).joinedload(OrderItemModel.flower))
+        .options(
+            joinedload(OrderModel.user),
+            joinedload(OrderModel.items).joinedload(OrderItemModel.flower),
+        )
         .order_by(OrderModel.id.desc())
         .all()
     )
@@ -959,6 +975,8 @@ def admin_list_orders(_: UserModel = Depends(require_admin), db: Session = Depen
             id=o.id,
             status=o.status,
             created_at=o.created_at,
+            user_id=o.user_id,
+            user_username=o.user.username if o.user else None,
             items=[
                 OrderItemOut(
                     flower=FlowerOut(
@@ -986,7 +1004,10 @@ def admin_update_order_status(
 ) -> OrderOut:
     order = (
         db.query(OrderModel)
-        .options(joinedload(OrderModel.items).joinedload(OrderItemModel.flower))
+        .options(
+            joinedload(OrderModel.user),
+            joinedload(OrderModel.items).joinedload(OrderItemModel.flower),
+        )
         .filter(OrderModel.id == order_id)
         .one_or_none()
     )
@@ -1011,6 +1032,8 @@ def admin_update_order_status(
         id=order.id,
         status=order.status,
         created_at=order.created_at,
+        user_id=order.user_id,
+        user_username=order.user.username if order.user else None,
         items=[
             OrderItemOut(
                 flower=FlowerOut(
