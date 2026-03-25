@@ -547,6 +547,8 @@ def search_products(
         AssistantProductOut(
             id=row.id,
             name=row.name,
+            description=row.description,
+            category=row.category,
             price=float(row.price),
             image_url=row.image_url,
             match_reason=_match_reason(

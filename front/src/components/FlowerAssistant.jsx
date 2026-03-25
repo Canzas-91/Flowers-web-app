@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { askFlowerAssistant } from "../api/publicApi";
 import "./FlowerAssistant.css";
 
 const QUICK_PROMPTS = [
@@ -12,38 +13,31 @@ const INITIAL_MESSAGES = [
   {
     id: "welcome-1",
     role: "assistant",
-    text: "Я помогу выбрать букет, когда меня подключат к бэкенду. Пока это готовый интерфейс чата для будущего AI-агента.",
+    text: "Помогу подобрать букет по бюджету, поводу и предпочтениям.",
   },
   {
     id: "welcome-2",
     role: "assistant",
-    text: "Фронтенд уже готов принимать сообщения, отображать ответы и карточки рекомендаций из API.",
+    text: "Опишите, для кого букет и какой ориентир по бюджету.",
   },
 ];
 
 function normalizeAssistantPayload(payload) {
   if (!payload) {
     return {
-      text: "Бэкенд-агент пока не подключён. Когда появится API, сюда будет приходить настоящий ответ.",
+      text: "Не удалось получить ответ от консультанта.",
       suggestions: [],
     };
   }
 
   return {
-    text: payload.text || "Агент не вернул текст ответа.",
+    text: payload.text || "Консультант не вернул текст ответа.",
     suggestions: Array.isArray(payload.suggestions) ? payload.suggestions : [],
   };
 }
 
-async function defaultRequestAssistantReply(message) {
-  await new Promise((resolve) => {
-    window.setTimeout(resolve, 700);
-  });
-
-  return {
-    text: `Сообщение «${message}» отправлено в UI-заготовку. Подключите сюда вызов вашего backend API.`,
-    suggestions: [],
-  };
+async function defaultRequestAssistantReply(messages) {
+  return askFlowerAssistant(messages);
 }
 
 function FlowerAssistant({ onAddToCart, onOpenCatalog, requestAssistantReply = defaultRequestAssistantReply }) {
@@ -72,7 +66,11 @@ function FlowerAssistant({ onAddToCart, onOpenCatalog, requestAssistantReply = d
     setIsLoading(true);
 
     try {
-      const payload = await requestAssistantReply(trimmedText);
+      const history = [...messages, userMessage].map((message) => ({
+        role: message.role,
+        content: message.text,
+      }));
+      const payload = await requestAssistantReply(history);
       const assistantReply = normalizeAssistantPayload(payload);
 
       setMessages((prev) => [
@@ -90,7 +88,7 @@ function FlowerAssistant({ onAddToCart, onOpenCatalog, requestAssistantReply = d
         {
           id: `assistant-error-${Date.now()}`,
           role: "assistant",
-          text: "Не удалось получить ответ от AI-агента. Проверьте подключение к backend API.",
+          text: "Не удалось получить ответ от AI-консультанта. Проверьте backend API, Ollama и доступность базы данных.",
           suggestions: [],
           isError: true,
         },
@@ -138,7 +136,7 @@ function FlowerAssistant({ onAddToCart, onOpenCatalog, requestAssistantReply = d
                       <article key={`${message.id}-${product.id}`} className="flower-assistant-product">
                         <div>
                           <h3>{product.title}</h3>
-                          <p>{product.description}</p>
+                          <p>{product.description || product.category || "Подходит под ваш запрос"}</p>
                           <span>{product.price} ₽</span>
                         </div>
                         <button type="button" onClick={() => onAddToCart(product)}>
@@ -156,9 +154,17 @@ function FlowerAssistant({ onAddToCart, onOpenCatalog, requestAssistantReply = d
 
             {isLoading ? (
               <div className="flower-assistant-message flower-assistant-message--assistant flower-assistant-message--loading">
-                <p>Агент думает...</p>
+                <p>Консультант думает...</p>
               </div>
             ) : null}
+          </div>
+
+          <div className="flower-assistant-quick-actions">
+            {QUICK_PROMPTS.map((prompt) => (
+              <button key={prompt} type="button" disabled={isLoading} onClick={() => submitMessage(prompt)}>
+                {prompt}
+              </button>
+            ))}
           </div>
 
           <form className="flower-assistant-form" onSubmit={handleSubmit}>

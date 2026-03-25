@@ -163,3 +163,18 @@ export async function createOrder(token, { address, paymentMethod }) {
   });
   return normalizeOrder(payload);
 }
+
+export async function askFlowerAssistant(messages, limit = 3) {
+  const payload = await request("/assistant/chat", {
+    method: "POST",
+    body: { messages, limit },
+  });
+
+  return {
+    text: payload?.reply ?? "",
+    suggestions: Array.isArray(payload?.products) ? payload.products.map(normalizeFlower) : [],
+    criteria: payload?.criteria ?? null,
+    needsClarification: Boolean(payload?.needs_clarification),
+    source: payload?.source ?? "",
+  };
+}
