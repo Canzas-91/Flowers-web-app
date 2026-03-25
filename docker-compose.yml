@@ -1,5 +1,4 @@
 services:
-
   db:
     image: postgres:16
     container_name: flowers_db
@@ -9,22 +8,36 @@ services:
       POSTGRES_PASSWORD: flowers_pass
       POSTGRES_DB: flowers_db
     ports:
-     - "5433:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
   app:
-  build: .
-  container_name: flowers_app
-  restart: always
-  ports:
-    - "8000:8000"
-  depends_on:
-    - db
-  environment:
-    DATABASE_URL: postgresql+psycopg2://flowers_user:flowers_pass@db:5432/flowers_db
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flowers_app
+    restart: always
+    ports:
+      - "8100:8100"
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql+psycopg2://flowers_user:flowers_pass@db:5432/flowers_db
 
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    container_name: flowers_front
+    restart: always
+    ports:
+      - "5173:5173"
+    depends_on:
+      - app
+    volumes:
+      - ./front:/app
+      - front_node_modules:/app/node_modules
 
   pgadmin:
     image: dpage/pgadmin4
@@ -40,3 +53,4 @@ services:
 
 volumes:
   postgres_data:
+  front_node_modules:

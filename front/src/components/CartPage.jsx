@@ -16,14 +16,13 @@ const getItemsLabel = (count) => {
 const CartPage = ({ items, onIncrease, onDecrease, onRemove, goToCatalog, onCheckout }) => {
   const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
   const totalCount = items.reduce((sum, item) => sum + item.qty, 0);
+  const totalLabel = getItemsLabel(totalCount);
 
   return (
     <section className="cart-page" aria-label="Корзина">
       <div className="cart-header-row">
         <h1 className="cart-title">Корзина</h1>
-        <p className="cart-subtitle">
-          {totalCount} {getItemsLabel(totalCount)}
-        </p>
+        <p className="cart-subtitle">{totalCount} {totalLabel}</p>
       </div>
 
       <div className="cart-layout">
@@ -86,9 +85,7 @@ const CartPage = ({ items, onIncrease, onDecrease, onRemove, goToCatalog, onChec
           </button>
           <div className="cart-divider">
             <div className="cart-total">
-              <p>
-                {totalCount} {getItemsLabel(totalCount)}
-              </p>
+              <p>{totalCount} {totalLabel}</p>
               <strong>{total} ₽</strong>
             </div>
             <button className="cart-pay" type="button" onClick={onCheckout} disabled={items.length === 0}>
