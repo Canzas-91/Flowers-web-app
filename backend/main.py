@@ -601,6 +601,54 @@ def _match_reason(*, style: str | None, recipient: str | None, budget_max: float
     return ", ".join(parts) if parts else "подобран по вашему запросу"
 
 
+def _format_price_rub(value: float) -> str:
+    rounded = int(round(value))
+    return f"{rounded:,}".replace(",", " ") + " ₽"
+
+
+def _build_grounded_assistant_reply(
+    *,
+    criteria: dict,
+    products: list[AssistantProductOut],
+) -> str:
+    if not products:
+        return (
+            "Сейчас не нашёл подходящих букетов по этим условиям. "
+            "Могу подобрать варианты, если немного расширим бюджет или изменим стиль."
+        )
+
+    style = criteria.get("style")
+    recipient = criteria.get("recipient")
+    budget_max = criteria.get("budget_max")
+
+    intro_parts: list[str] = []
+    if recipient:
+        intro_parts.append(f"для {recipient}")
+    if style:
+        intro_parts.append(f"в стиле \"{style}\"")
+    if budget_max is not None:
+        intro_parts.append(f"до {_format_price_rub(float(budget_max))}")
+
+    intro = "Подобрал варианты"
+    if intro_parts:
+        intro += " " + ", ".join(intro_parts)
+    intro += "."
+
+    lines = [intro]
+    for index, product in enumerate(products[:3], start=1):
+        line = f"{index}. {product.name} — {_format_price_rub(product.price)}."
+        if product.category:
+            line += f" Категория: {product.category}."
+        if product.description:
+            line += f" {product.description.strip().rstrip('.')}."
+        if product.match_reason:
+            line += f" {product.match_reason.strip().rstrip('.')}."
+        lines.append(line)
+
+    lines.append("Если хотите, могу сузить выбор по стилю, поводу или точному бюджету.")
+    return "\n".join(lines)
+
+
 def search_products(
     *,
     db: Session,
@@ -737,6 +785,23 @@ def _stream_assistant_reply(
     ]
 
     return _stream_ollama(messages=prompt, model=OLLAMA_REPLY_MODEL, temperature=0.4)
+
+
+def _build_assistant_reply(
+    *,
+    criteria: dict,
+    products: list[AssistantProductOut],
+) -> str:
+    return _build_grounded_assistant_reply(criteria=criteria, products=products)
+
+
+def _stream_assistant_reply(
+    *,
+    criteria: dict,
+    products: list[AssistantProductOut],
+):
+    reply = _build_grounded_assistant_reply(criteria=criteria, products=products)
+    return iter([reply])
 
 
 def _sse_event(payload: dict) -> str:

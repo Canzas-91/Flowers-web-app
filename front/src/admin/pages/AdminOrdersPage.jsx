@@ -3,10 +3,10 @@ import "../admin.css";
 import { adminListOrders, adminUpdateOrderStatus } from "../api/adminApi";
 
 const statusMeta = {
-  new: { label: "new", badge: "adminBadgeWarn" },
-  delivering: { label: "delivering", badge: "" },
-  done: { label: "done", badge: "adminBadgeOk" },
-  canceled: { label: "canceled", badge: "adminBadgeDanger" },
+  new: { label: "СОЗДАН", badge: "adminBadgeWarn" },
+  delivering: { label: "ДОСТАВЛЯЕТСЯ", badge: "" },
+  done: { label: "ЗАВЕРШЕН", badge: "adminBadgeOk" },
+  canceled: { label: "ОТМЕНЕН", badge: "adminBadgeDanger" },
 };
 
 function calcOrderTotal(order) {
@@ -76,10 +76,10 @@ export function AdminOrdersPage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="all">All</option>
-                <option value="new">new</option>
-                <option value="delivering">delivering</option>
-                <option value="done">done</option>
-                <option value="canceled">canceled</option>
+                <option value="new">СОЗДАН</option>
+                <option value="delivering">ДОСТАВЛЯЕТСЯ</option>
+                <option value="done">ЗАВЕРШЕН</option>
+                <option value="canceled">ОТМЕНЕН</option>
               </select>
             </div>
           </div>
@@ -149,10 +149,10 @@ export function AdminOrdersPage() {
                             value={o.status}
                             onChange={(e) => onChangeStatus(o.id, e.target.value)}
                           >
-                            <option value="new">new</option>
-                            <option value="delivering">delivering</option>
-                            <option value="done">done</option>
-                            <option value="canceled">canceled</option>
+                            <option value="new">СОЗДАН</option>
+                            <option value="delivering">ДОСТАВЛЯЕТСЯ</option>
+                            <option value="done">ЗАВЕРШЕН</option>
+                            <option value="canceled">ОТМЕНЕН</option>
                           </select>
                         </div>
                       </td>

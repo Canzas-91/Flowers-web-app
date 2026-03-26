@@ -1,6 +1,13 @@
 import { useState } from "react";
 import "./AccountPage.css";
 
+const orderStatusLabels = {
+  new: "СОЗДАН",
+  delivering: "ДОСТАВЛЯЕТСЯ",
+  done: "ЗАВЕРШЕН",
+  canceled: "ОТМЕНЕН",
+};
+
 function AccountPage({ user, cartItems, orders, onBackHome, onOpenCatalog, onLogout }) {
   const [activeTab, setActiveTab] = useState("profile");
   const totalItems = cartItems.reduce((sum, item) => sum + item.qty, 0);
@@ -106,7 +113,7 @@ function AccountPage({ user, cartItems, orders, onBackHome, onOpenCatalog, onLog
                             {new Date(order.createdAt).toLocaleString("ru-RU")}
                           </p>
                         </div>
-                        <span className="account-order-status">{order.status}</span>
+                        <span className="account-order-status">{orderStatusLabels[order.status] ?? order.status}</span>
                       </div>
 
                       <div className="account-order-details">

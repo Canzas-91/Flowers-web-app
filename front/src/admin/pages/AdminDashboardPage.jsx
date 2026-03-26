@@ -80,10 +80,10 @@ export function AdminDashboardPage() {
           </div>
         ) : (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <span className="adminBadge adminBadgeWarn">new: {metrics.newCount}</span>
-            <span className="adminBadge">delivering: {metrics.deliveringCount}</span>
-            <span className="adminBadge adminBadgeOk">done: {metrics.doneCount}</span>
-            <span className="adminBadge adminBadgeDanger">canceled: {metrics.canceledCount}</span>
+            <span className="adminBadge adminBadgeWarn">СОЗДАН: {metrics.newCount}</span>
+            <span className="adminBadge">ДОСТАВЛЯЕТСЯ: {metrics.deliveringCount}</span>
+            <span className="adminBadge adminBadgeOk">ЗАВЕРШЕН: {metrics.doneCount}</span>
+            <span className="adminBadge adminBadgeDanger">ОТМЕНЕН: {metrics.canceledCount}</span>
           </div>
         )}
 
