@@ -12,18 +12,50 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: flowers_ollama
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 20s
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: flowers_ollama_pull
+    profiles:
+      - init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
+    entrypoint: ["/bin/sh", "-c", "ollama pull \"$OLLAMA_MODEL\""]
+
   app:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: flowers_app
     restart: always
+    env_file:
+      - .env
     ports:
       - "8100:8100"
     depends_on:
       - db
+      - ollama
     environment:
       DATABASE_URL: postgresql+psycopg2://flowers_user:flowers_pass@db:5432/flowers_db
+      OLLAMA_BASE_URL: http://ollama:11434
 
   front:
     build:
@@ -53,4 +85,5 @@ services:
 
 volumes:
   postgres_data:
+  ollama_data:
   front_node_modules:

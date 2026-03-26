@@ -2,6 +2,20 @@
 
 ## Run
 
+### Docker
+```powershell
+cd d:\flowers-app
+docker compose up -d --build
+docker compose run --rm --profile init ollama-pull
+```
+
+### Docker URLs
+- Site: `http://localhost:5173`
+- Admin: `http://localhost:5173/admin`
+- API: `http://127.0.0.1:8100`
+- Ollama API: `http://127.0.0.1:11434`
+- pgAdmin: `http://localhost:5050`
+
 ### Backend
 ```powershell
 cd d:\flowers-app\backend
@@ -15,7 +29,7 @@ npm.cmd install
 npm.cmd run dev
 ```
 
-### URLs
+### Local URLs
 - Site: `http://localhost:5173`
 - Admin: `http://localhost:5173/admin`
 - API: `http://127.0.0.1:8100`
@@ -29,28 +43,24 @@ The backend syncs the bootstrap admin on startup. After restarting the backend, 
 
 ## Ollama
 
-### Installed paths
-- Binary: `C:\Users\PC\AppData\Local\Programs\Ollama\ollama.exe`
-- Models: `D:\всякое\ollama\models`
-
-`C:\Users\PC\.ollama\models` is configured as a junction to `D:\всякое\ollama\models`, so model storage stays on `D:`.
-
-### Start Ollama manually
+### Docker service
 ```powershell
-$env:OLLAMA_MODELS='D:\всякое\ollama\models'
-& 'C:\Users\PC\AppData\Local\Programs\Ollama\ollama.exe' serve
+docker compose up -d ollama
+```
+
+### Pull model
+```powershell
+docker compose run --rm --profile init ollama-pull
 ```
 
 ### Check installed models
 ```powershell
-$env:OLLAMA_MODELS='D:\всякое\ollama\models'
-& 'C:\Users\PC\AppData\Local\Programs\Ollama\ollama.exe' list
+docker exec -it flowers_ollama ollama list
 ```
 
 ### Quick model test
 ```powershell
-$env:OLLAMA_MODELS='D:\всякое\ollama\models'
-& 'C:\Users\PC\AppData\Local\Programs\Ollama\ollama.exe' run llama3 "Ответь одним словом: ok"
+docker exec -it flowers_ollama ollama run llama3 "Answer with one word: ok"
 ```
 
 ## Assistant
@@ -60,10 +70,11 @@ The assistant uses `llama3` through `Ollama`.
 ### Environment variables
 In `.env`:
 ```env
-OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=llama3
 OLLAMA_TIMEOUT_SECONDS=45
 ```
+
+Inside Docker, backend uses `http://ollama:11434`.
 
 ### Health check
 Check that backend can reach Ollama:
@@ -77,7 +88,7 @@ Expected response shape:
   "status": "ok",
   "provider": "ollama",
   "model": "llama3",
-  "base_url": "http://127.0.0.1:11434",
+  "base_url": "http://ollama:11434",
   "reply": "ok"
 }
 ```
@@ -106,6 +117,5 @@ Behavior:
 
 ## Notes
 
-- If PostgreSQL is reachable only through Radmin VPN, the assistant and admin data screens will not work until VPN is connected.
 - `/assistant/health` checks Ollama only.
 - `/assistant/chat` needs both Ollama and database access.
