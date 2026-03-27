@@ -18,6 +18,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session, joinedload
 
 from database import Base, engine, get_db
+from forecast import forecast_router
 from models import (
     AuditLogModel,
     CartItemModel,
@@ -35,6 +36,7 @@ from prompts import (
 
 
 app = FastAPI()
+app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
 
 app.add_middleware(
     CORSMiddleware,
