@@ -35,7 +35,16 @@ from prompts import (
 )
 
 
-app = FastAPI()
+OPENAPI_TAGS = [
+    {"name": "user", "description": "Операции авторизованного пользователя."},
+    {"name": "admin", "description": "Административные операции."},
+    {"name": "guest", "description": "Публичные и служебные endpoints без авторизации."},
+    {"name": "ollama", "description": "Endpoints, связанные с ассистентом и Ollama."},
+    {"name": "forecast", "description": "Прогнозирование спроса и переобучение модели Prophet."},
+]
+
+
+app = FastAPI(openapi_tags=OPENAPI_TAGS)
 app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
 
 app.add_middleware(
@@ -810,12 +819,12 @@ def _sse_event(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-@app.get("/health")
+@app.get("/health", tags=["guest"])
 def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/assistant/health")
+@app.get("/assistant/health", tags=["ollama"])
 def assistant_health() -> dict:
     prompt = [
         {
@@ -841,7 +850,7 @@ def assistant_health() -> dict:
     }
 
 
-@app.post("/assistant/chat", response_model=AssistantChatResponse)
+@app.post("/assistant/chat", response_model=AssistantChatResponse, tags=["ollama"])
 def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db)) -> AssistantChatResponse:
     criteria = _extract_criteria(payload.messages)
 
@@ -890,7 +899,7 @@ def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db))
     )
 
 
-@app.post("/assistant/chat/stream")
+@app.post("/assistant/chat/stream", tags=["ollama"])
 def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
     def event_stream():
         criteria = _extract_criteria(payload.messages)
@@ -975,7 +984,7 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.post("/auth/register", response_model=UserOut)
+@app.post("/auth/register", response_model=UserOut, tags=["guest"])
 def register(payload: UserRegister, db: Session = Depends(get_db)) -> UserOut:
     exists = db.query(UserModel).filter(UserModel.username == payload.username).one_or_none()
     if exists is not None:
@@ -992,7 +1001,7 @@ def register(payload: UserRegister, db: Session = Depends(get_db)) -> UserOut:
     return UserOut(id=user.id, username=user.username, role=user.role)
 
 
-@app.post("/auth/login", response_model=TokenOut)
+@app.post("/auth/login", response_model=TokenOut, tags=["guest"])
 def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenOut:
     user = db.query(UserModel).filter(UserModel.username == payload.username).one_or_none()
     if user is None or not pwd_context.verify(payload.password, user.password_hash):
@@ -1002,12 +1011,12 @@ def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenOut:
     return TokenOut(access_token=token)
 
 
-@app.get("/me", response_model=UserOut)
+@app.get("/me", response_model=UserOut, tags=["user"])
 def me(current_user: UserModel = Depends(get_current_user)) -> UserOut:
     return UserOut(id=current_user.id, username=current_user.username, role=current_user.role)
 
 
-@app.get("/flowers", response_model=list[FlowerOut])
+@app.get("/flowers", response_model=list[FlowerOut], tags=["guest"])
 def list_flowers(db: Session = Depends(get_db)) -> list[FlowerOut]:
     rows = db.query(FlowerModel).order_by(FlowerModel.id.asc()).all()
     flowers: list[FlowerOut] = []
@@ -1029,7 +1038,7 @@ def list_flowers(db: Session = Depends(get_db)) -> list[FlowerOut]:
     return flowers
 
 
-@app.get("/flowers/{flower_id}", response_model=FlowerOut)
+@app.get("/flowers/{flower_id}", response_model=FlowerOut, tags=["guest"])
 def get_flower(flower_id: int, db: Session = Depends(get_db)) -> FlowerOut:
     row = db.query(FlowerModel).filter(FlowerModel.id == flower_id).one_or_none()
     if row is None:
@@ -1047,7 +1056,7 @@ def get_flower(flower_id: int, db: Session = Depends(get_db)) -> FlowerOut:
         raise HTTPException(status_code=500, detail=f"Invalid flower data: {exc}") from exc
 
 
-@app.post("/admin/flowers", response_model=FlowerOut)
+@app.post("/admin/flowers", response_model=FlowerOut, tags=["admin"])
 def admin_create_flower(
     payload: FlowerCreate,
     db: Session = Depends(get_db),
@@ -1088,7 +1097,7 @@ def admin_create_flower(
     )
 
 
-@app.patch("/admin/flowers/{flower_id}", response_model=FlowerOut)
+@app.patch("/admin/flowers/{flower_id}", response_model=FlowerOut, tags=["admin"])
 def admin_update_flower(
     flower_id: int,
     payload: FlowerUpdate,
@@ -1147,7 +1156,7 @@ def admin_update_flower(
     )
 
 
-@app.delete("/admin/flowers/{flower_id}")
+@app.delete("/admin/flowers/{flower_id}", tags=["admin"])
 def admin_delete_flower(
     flower_id: int,
     db: Session = Depends(get_db),
@@ -1177,7 +1186,7 @@ def admin_delete_flower(
     return {"deleted": True}
 
 
-@app.get("/cart", response_model=list[CartItemOut])
+@app.get("/cart", response_model=list[CartItemOut], tags=["user"])
 def get_cart(current_user: UserModel = Depends(get_current_user), db: Session = Depends(get_db)) -> list[CartItemOut]:
     items = (
         db.query(CartItemModel)
@@ -1203,7 +1212,7 @@ def get_cart(current_user: UserModel = Depends(get_current_user), db: Session = 
     ]
 
 
-@app.post("/cart/items", response_model=CartItemOut)
+@app.post("/cart/items", response_model=CartItemOut, tags=["user"])
 def add_to_cart(
     payload: CartItemAdd,
     current_user: UserModel = Depends(get_current_user),
@@ -1247,7 +1256,7 @@ def add_to_cart(
     )
 
 
-@app.patch("/cart/items/{item_id}", response_model=CartItemOut)
+@app.patch("/cart/items/{item_id}", response_model=CartItemOut, tags=["user"])
 def update_cart_item(
     item_id: int,
     payload: CartItemUpdate,
@@ -1280,7 +1289,7 @@ def update_cart_item(
     )
 
 
-@app.delete("/cart/items/{item_id}")
+@app.delete("/cart/items/{item_id}", tags=["user"])
 def delete_cart_item(
     item_id: int,
     current_user: UserModel = Depends(get_current_user),
@@ -1294,7 +1303,7 @@ def delete_cart_item(
     return {"deleted": True}
 
 
-@app.post("/orders/from-cart", response_model=OrderOut)
+@app.post("/orders/from-cart", response_model=OrderOut, tags=["user"])
 def create_order_from_cart(
     payload: OrderCreate,
     current_user: UserModel = Depends(get_current_user),
@@ -1361,7 +1370,7 @@ def create_order_from_cart(
     )
 
 
-@app.get("/me/orders", response_model=list[OrderOut])
+@app.get("/me/orders", response_model=list[OrderOut], tags=["user"])
 def my_orders(current_user: UserModel = Depends(get_current_user), db: Session = Depends(get_db)) -> list[OrderOut]:
     orders = (
         db.query(OrderModel)
@@ -1397,7 +1406,7 @@ def my_orders(current_user: UserModel = Depends(get_current_user), db: Session =
     ]
 
 
-@app.get("/orders/{order_id}", response_model=OrderOut)
+@app.get("/orders/{order_id}", response_model=OrderOut, tags=["user"])
 def get_order(order_id: int, current_user: UserModel = Depends(get_current_user), db: Session = Depends(get_db)) -> OrderOut:
     order = (
         db.query(OrderModel)
@@ -1434,7 +1443,7 @@ def get_order(order_id: int, current_user: UserModel = Depends(get_current_user)
     )
 
 
-@app.get("/admin/orders", response_model=list[OrderOut])
+@app.get("/admin/orders", response_model=list[OrderOut], tags=["admin"])
 def admin_list_orders(_: UserModel = Depends(require_admin), db: Session = Depends(get_db)) -> list[OrderOut]:
     orders = (
         db.query(OrderModel)
@@ -1474,7 +1483,7 @@ def admin_list_orders(_: UserModel = Depends(require_admin), db: Session = Depen
     ]
 
 
-@app.patch("/admin/orders/{order_id}/status", response_model=OrderOut)
+@app.patch("/admin/orders/{order_id}/status", response_model=OrderOut, tags=["admin"])
 def admin_update_order_status(
     order_id: int,
     payload: OrderStatusUpdate,
@@ -1533,7 +1542,7 @@ def admin_update_order_status(
     )
 
 
-@app.get("/admin/users", response_model=list[AdminUserOut])
+@app.get("/admin/users", response_model=list[AdminUserOut], tags=["admin"])
 def admin_list_users(_: UserModel = Depends(require_admin), db: Session = Depends(get_db)) -> list[AdminUserOut]:
     users = db.query(UserModel).order_by(UserModel.id.asc()).all()
     return [
@@ -1547,7 +1556,7 @@ def admin_list_users(_: UserModel = Depends(require_admin), db: Session = Depend
     ]
 
 
-@app.get("/admin/users/{user_id}", response_model=UserOut)
+@app.get("/admin/users/{user_id}", response_model=UserOut, tags=["admin"])
 def admin_get_user(user_id: int, _: UserModel = Depends(require_admin), db: Session = Depends(get_db)) -> UserOut:
     user = db.query(UserModel).filter(UserModel.id == user_id).one_or_none()
     if user is None:
@@ -1555,7 +1564,7 @@ def admin_get_user(user_id: int, _: UserModel = Depends(require_admin), db: Sess
     return UserOut(id=user.id, username=user.username, role=user.role)
 
 
-@app.get("/admin/audit", response_model=list[AuditLogOut])
+@app.get("/admin/audit", response_model=list[AuditLogOut], tags=["admin"])
 def admin_list_audit(
     _: UserModel = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -1583,7 +1592,7 @@ def admin_list_audit(
     ]
 
 
-@app.get("/admin/audit/{audit_id}", response_model=AuditLogOut)
+@app.get("/admin/audit/{audit_id}", response_model=AuditLogOut, tags=["admin"])
 def admin_get_audit(
     audit_id: int,
     _: UserModel = Depends(require_admin),
@@ -1605,7 +1614,7 @@ def admin_get_audit(
     )
 
 
-@app.delete("/admin/users/{user_id}")
+@app.delete("/admin/users/{user_id}", tags=["admin"])
 def admin_delete_user(user_id: int, admin: UserModel = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
     user = db.query(UserModel).filter(UserModel.id == user_id).one_or_none()
     if user is None:

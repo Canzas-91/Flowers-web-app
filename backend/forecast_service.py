@@ -12,10 +12,15 @@ from prophet import Prophet
 from cmdstanpy.utils import filesystem
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = BASE_DIR / "synthetic_orders.csv"
-MODEL_PATH = Path(__file__).resolve().parent / "prophet_model.joblib"
-TMP_DIR = Path(__file__).resolve().parent / "tmp"
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BACKEND_DIR.parent
+DATA_PATH = (
+    PROJECT_ROOT / "synthetic_orders.csv"
+    if (PROJECT_ROOT / "synthetic_orders.csv").exists()
+    else BACKEND_DIR / "synthetic_orders.csv"
+)
+MODEL_PATH = BACKEND_DIR / "prophet_model.joblib"
+TMP_DIR = BACKEND_DIR / "tmp"
 STAN_OUTPUT_DIR = TMP_DIR / "stan_runs"
 
 
@@ -131,8 +136,9 @@ def forecast_demand(
         raise ValueError("safety_stock must be >= 0")
 
     model = ensure_model(model_path=model_path, csv_path=csv_path)
-    future = model.make_future_dataframe(periods=days)
-    forecast = model.predict(future)[["ds", "yhat"]].tail(days).copy()
+    start_date = pd.Timestamp.now().normalize()
+    future = pd.DataFrame({"ds": pd.date_range(start=start_date, periods=days, freq="D")})
+    forecast = model.predict(future)[["ds", "yhat"]].copy()
 
     rows: list[ForecastRow] = []
     for row in forecast.itertuples(index=False):
