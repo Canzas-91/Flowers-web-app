@@ -7,6 +7,7 @@ import uuid
 
 import cmdstanpy
 import joblib
+import numpy as np
 import pandas as pd
 from prophet import Prophet
 from cmdstanpy.utils import filesystem
@@ -29,6 +30,9 @@ class ForecastRow:
     date: str
     forecast: int
     purchase_plan: int
+
+
+REGRESSOR_COLUMNS = ("is_weekend", "month_sin", "month_cos")
 
 
 def _ensure_prophet_backend() -> None:
@@ -91,20 +95,55 @@ def build_daily_demand(csv_path: Path = DATA_PATH) -> pd.DataFrame:
     return daily
 
 
+def _clip_outliers_iqr(daily: pd.DataFrame) -> pd.DataFrame:
+    cleaned = daily.copy()
+    q1 = cleaned["y"].quantile(0.25)
+    q3 = cleaned["y"].quantile(0.75)
+    iqr = q3 - q1
+    if not np.isfinite(iqr) or iqr <= 0:
+        return cleaned
+
+    lower = max(0.0, float(q1 - 1.5 * iqr))
+    upper = float(q3 + 1.5 * iqr)
+    cleaned["y"] = cleaned["y"].clip(lower=lower, upper=upper)
+    return cleaned
+
+
+def _add_calendar_features(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    dates = pd.to_datetime(out["ds"])
+    month = dates.dt.month.astype(float)
+
+    out["is_weekend"] = (dates.dt.weekday >= 5).astype(int)
+    out["month_sin"] = np.sin(2.0 * np.pi * month / 12.0)
+    out["month_cos"] = np.cos(2.0 * np.pi * month / 12.0)
+    return out
+
+
+def _build_prophet_model() -> Prophet:
+    model = Prophet(
+        yearly_seasonality=True,
+        weekly_seasonality=True,
+        daily_seasonality=False,
+        seasonality_mode="additive",
+        changepoint_prior_scale=0.08,
+        seasonality_prior_scale=8.0,
+    )
+    for reg in REGRESSOR_COLUMNS:
+        model.add_regressor(reg)
+    return model
+
+
 def train_and_save_model(
     *,
     csv_path: Path = DATA_PATH,
     model_path: Path = MODEL_PATH,
 ) -> Path:
     _ensure_prophet_backend()
-    history = build_daily_demand(csv_path)
+    history = _clip_outliers_iqr(build_daily_demand(csv_path))
+    history = _add_calendar_features(history)
 
-    model = Prophet(
-        yearly_seasonality=True,
-        weekly_seasonality=True,
-        daily_seasonality=False,
-        seasonality_mode="additive",
-    )
+    model = _build_prophet_model()
     model.fit(history, output_dir=str(STAN_OUTPUT_DIR.resolve()))
     joblib.dump(model, model_path)
     return model_path
@@ -138,6 +177,7 @@ def forecast_demand(
     model = ensure_model(model_path=model_path, csv_path=csv_path)
     start_date = pd.Timestamp.now().normalize()
     future = pd.DataFrame({"ds": pd.date_range(start=start_date, periods=days, freq="D")})
+    future = _add_calendar_features(future)
     forecast = model.predict(future)[["ds", "yhat"]].copy()
 
     rows: list[ForecastRow] = []
@@ -156,3 +196,51 @@ def forecast_demand(
 
 def model_health(model_path: Path = MODEL_PATH) -> dict[str, bool]:
     return {"model_loaded": model_path.exists()}
+
+
+def evaluate_holdout_metrics(
+    *,
+    csv_path: Path = DATA_PATH,
+    test_days: int = 30,
+) -> dict[str, float | int]:
+    
+    if test_days < 1:
+        raise ValueError("test_days must be >= 1")
+
+    _ensure_prophet_backend()
+    daily = _clip_outliers_iqr(build_daily_demand(csv_path))
+    if len(daily) < 8:
+        raise ValueError("Not enough history rows to evaluate (need at least 8 days).")
+
+    test_days = int(min(test_days, max(1, len(daily) // 2)))
+    train = daily.iloc[:-test_days].copy()
+    test = daily.iloc[-test_days:].copy()
+
+    train = _add_calendar_features(train)
+    test_features = _add_calendar_features(test[["ds"]].copy())
+
+    model = _build_prophet_model()
+    model.fit(train, output_dir=str(STAN_OUTPUT_DIR.resolve()))
+    pred = model.predict(test_features)[["ds", "yhat"]]
+
+    merged = test.merge(pred, on="ds", how="left")
+    y = merged["y"].astype(float).to_numpy()
+    yhat = np.clip(merged["yhat"].astype(float).to_numpy(), 0, None)
+
+    mae = float(np.mean(np.abs(y - yhat)))
+    rmse = float(np.sqrt(np.mean((y - yhat) ** 2)))
+
+    denom = np.where(y == 0, np.nan, y)
+    mape = float(np.nanmean(np.abs((y - yhat) / denom)) * 100.0)
+    accuracy = float(max(0.0, 1.0 - (mape / 100.0)))
+
+    return {
+        "rows": int(len(daily)),
+        "train_rows": int(len(train)),
+        "test_rows": int(len(test)),
+        "test_days": int(test_days),
+        "mae": mae,
+        "rmse": rmse,
+        "mape_percent": mape,
+        "accuracy": accuracy,
+    }

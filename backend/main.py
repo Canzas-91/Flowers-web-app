@@ -787,11 +787,7 @@ def _stream_assistant_reply(
             "content": RECOMMENDATION_SYSTEM_PROMPT,
         },
         {
-            "role": "user",
-            "content": (
-                f"РљСЂРёС‚РµСЂРёРё РєР»РёРµРЅС‚Р°: {criteria_json}\n"
-                f"РќР°Р№РґРµРЅРЅС‹Рµ С‚РѕРІР°СЂС‹: {products_json}"
-            ),
+           
         },
     ]
 

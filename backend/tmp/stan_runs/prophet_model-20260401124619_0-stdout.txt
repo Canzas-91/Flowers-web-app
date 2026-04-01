@@ -1,0 +1,38 @@
+method = optimize
+  optimize
+    algorithm = lbfgs (Default)
+      lbfgs
+        init_alpha = 0.001 (Default)
+        tol_obj = 1e-12 (Default)
+        tol_rel_obj = 10000 (Default)
+        tol_grad = 1e-08 (Default)
+        tol_rel_grad = 1e+07 (Default)
+        tol_param = 1e-08 (Default)
+        history_size = 5 (Default)
+    jacobian = false (Default)
+    iter = 10000
+    save_iterations = false (Default)
+id = 1 (Default)
+data
+  file = D:\flowers-app\backend\tmp\aa28e2e1fd134a6b8daef5b1709150db.json
+init = D:\flowers-app\backend\tmp\e981e16f6a254d32879ad217c54c44b7.json
+random
+  seed = 33436
+output
+  file = D:\flowers-app\backend\tmp\stan_runs\prophet_model-20260401124619.csv
+  diagnostic_file =  (Default)
+  refresh = 100 (Default)
+  sig_figs = 8 (Default)
+  profile_file = profile.csv (Default)
+  save_cmdstan_config = false (Default)
+num_threads = 1 (Default)
+
+Initial log joint probability = -16.1234
+    Iter      log prob        ||dx||      ||grad||       alpha      alpha0  # evals  Notes 
+      99       954.323   0.000387134       65.6888           1           1      123   
+    Iter      log prob        ||dx||      ||grad||       alpha      alpha0  # evals  Notes 
+     199        954.42   2.91168e-07       59.8126      0.7501      0.7501      248   
+    Iter      log prob        ||dx||      ||grad||       alpha      alpha0  # evals  Notes 
+     226       954.421   2.50234e-08       60.8034      0.3919           1      280   
+Optimization terminated normally: 
+  Convergence detected: relative gradient magnitude is below tolerance

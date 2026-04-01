@@ -1,0 +1,37 @@
+method = optimize
+  optimize
+    algorithm = lbfgs (Default)
+      lbfgs
+        init_alpha = 0.001 (Default)
+        tol_obj = 1e-12 (Default)
+        tol_rel_obj = 10000 (Default)
+        tol_grad = 1e-08 (Default)
+        tol_rel_grad = 1e+07 (Default)
+        tol_param = 1e-08 (Default)
+        history_size = 5 (Default)
+    jacobian = false (Default)
+    iter = 10000
+    save_iterations = false (Default)
+id = 1 (Default)
+data
+  file = D:\flowers-app\backend\tmp\483dc64ddcc342c598314ad9a876e609.json
+init = D:\flowers-app\backend\tmp\104e4a0d2fd846bebd49805db45cc8a9.json
+random
+  seed = 87797
+output
+  file = D:\flowers-app\backend\tmp\stan_runs\prophet_model-20260401121020.csv
+  diagnostic_file =  (Default)
+  refresh = 100 (Default)
+  sig_figs = 8 (Default)
+  profile_file = profile.csv (Default)
+  save_cmdstan_config = false (Default)
+num_threads = 1 (Default)
+
+Initial log joint probability = -3.23082
+    Iter      log prob        ||dx||      ||grad||       alpha      alpha0  # evals  Notes 
+      99       1720.65   0.000128345       110.936      0.2858           1      128   
+    Iter      log prob        ||dx||      ||grad||       alpha      alpha0  # evals  Notes 
+     111       1720.66   2.18074e-05       99.1786   2.121e-07       0.001      179  LS failed, Hessian reset 
+     134       1720.67   5.11548e-08       98.5589      0.4903      0.4903      209   
+Optimization terminated normally: 
+  Convergence detected: relative gradient magnitude is below tolerance
