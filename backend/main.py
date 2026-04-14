@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -66,7 +67,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip(
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 OLLAMA_REPLY_MODEL = os.getenv("OLLAMA_REPLY_MODEL", OLLAMA_MODEL)
 OLLAMA_EXTRACTION_MODEL = os.getenv("OLLAMA_EXTRACTION_MODEL", OLLAMA_REPLY_MODEL)
-OLLAMA_EXTRACT_WITH_LLM = os.getenv("OLLAMA_EXTRACT_WITH_LLM", "false").lower() == "true"
+OLLAMA_EXTRACT_WITH_LLM = os.getenv("OLLAMA_EXTRACT_WITH_LLM", "true").lower() == "true"
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "45"))
 
 # bcrypt currently has compatibility issues on some Python builds (e.g. 3.14 on Windows),
@@ -381,11 +382,68 @@ def _normalize_text(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
+def _last_user_message(messages: list[AssistantMessageIn]) -> str:
+    for message in reversed(messages):
+        if message.role == "user":
+            return message.content.strip()
+    return ""
+
+
+def _tokenize_search_text(text: str) -> list[str]:
+    tokens = re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9]+", _normalize_text(text))
+    stopwords = {
+        "для", "под", "подбери", "подобрать", "покажи", "показать", "хочу", "нужен", "нужно", "надо",
+        "мне", "нам", "это", "этот", "эта", "есть", "что", "какой", "какие", "как", "или", "ещё",
+        "еще", "то", "на", "к", "ко", "по", "из", "в", "во", "с", "со", "до", "от", "и", "а", "но",
+        "не", "очень", "самый", "самая", "самое", "букет", "букета", "букеты", "букетов", "вариант",
+        "варианты", "товар", "товары",
+    }
+    return [token for token in tokens if len(token) > 1 and token not in stopwords and not token.isdigit()]
+
+
+def _extract_budget_candidates(text: str) -> list[float]:
+    lowered = _normalize_text(text)
+    cleaned = re.sub(r"\b\d{1,2}\s+(марта|февраля|января|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b", " ", lowered)
+    cleaned = re.sub(r"\b(20\d{2}|19\d{2})\b", " ", cleaned)
+    cleaned = re.sub(r"\b\d+\s*лет\b", " ", cleaned)
+    cleaned = re.sub(r"\b\d+\s*(шт|штук)\b", " ", cleaned)
+
+    matches: list[float] = []
+    for raw_value, unit in re.findall(
+        r"(?:до|не\s+дороже|не\s+выше|максимум|макс(?:имум)?|в\s+пределах|в\s+районе|примерно|около|бюджет(?:ом)?\s*(?:до)?|за)\s*(\d[\d\s]{1,8})(?:\s*(руб|р|₽|тыс|тысяч[аи]?|k))?",
+        cleaned,
+    ):
+        try:
+            numeric = float(raw_value.replace(" ", ""))
+        except ValueError:
+            continue
+        if unit in {"тыс", "тысяча", "тысячи", "тысяч", "k"}:
+            numeric *= 1000
+        if 300 <= numeric <= 300000:
+            matches.append(numeric)
+
+    for raw_value, _unit in re.findall(r"(\d+(?:[.,]\d+)?)\s*(тыс|тысяч[аи]?|k)\b", cleaned):
+        try:
+            numeric = float(raw_value.replace(",", ".")) * 1000
+        except ValueError:
+            continue
+        if 300 <= numeric <= 300000:
+            matches.append(numeric)
+
+    for raw_value in re.findall(r"(\d[\d\s]{2,8})\s*(?:руб|р|₽)\b", cleaned):
+        try:
+            numeric = float(raw_value.replace(" ", ""))
+        except ValueError:
+            continue
+        if 300 <= numeric <= 300000:
+            matches.append(numeric)
+
+    return matches
+
 def _budget_from_text(text: str) -> tuple[str | None, float | None]:
     lowered = _normalize_text(text)
-    digits = "".join(ch if ch.isdigit() else " " for ch in lowered).split()
-    if digits:
-        numeric_values = [float(part) for part in digits]
+    numeric_values = _extract_budget_candidates(text)
+    if numeric_values:
         return "numeric", max(numeric_values)
     if any(token in lowered for token in ["недорог", "дешев", "бюджет", "эконом"]):
         return "budget", 3500.0
@@ -396,9 +454,24 @@ def _budget_from_text(text: str) -> tuple[str | None, float | None]:
     return None, None
 
 
+def _detect_intents(messages: list[AssistantMessageIn]) -> dict[str, bool]:
+    last_user_text = _normalize_text(_last_user_message(messages))
+
+    def has_any(variants: list[str]) -> bool:
+        return any(variant in last_user_text for variant in variants)
+
+    return {
+        "compare": has_any(["сравни", "сравнить", "сравнение", "что лучше", "чем отличается"]),
+        "cheaper": has_any(["дешевле", "подешевле", "более дешев", "не такое дорого", "эконом"]),
+        "brighter": has_any(["ярче", "поярче", "более ярк", "насыщенн"]),
+        "alternative": has_any(["ещё", "еще", "другой", "другие", "альтернати", "вариант"]),
+    }
+
+
 def _extract_criteria_fallback(messages: list[AssistantMessageIn]) -> dict:
     conversation = " ".join(message.content for message in messages)
     lowered = _normalize_text(conversation)
+    intents = _detect_intents(messages)
 
     style = None
     for candidate in STYLE_KEYWORDS:
@@ -413,13 +486,14 @@ def _extract_criteria_fallback(messages: list[AssistantMessageIn]) -> dict:
             break
 
     budget_text, budget_max = _budget_from_text(conversation)
-    needs_budget = budget_max is None and budget_text is None
+    needs_budget = budget_max is None and budget_text is None and not any(intents.values())
 
     return {
         "style": style,
         "recipient": recipient,
         "budget_text": budget_text,
         "budget_max": budget_max,
+        "intents": intents,
         "needs_budget": needs_budget,
         "clarification_question": (
             "Подскажите, пожалуйста, в каком бюджете подобрать варианты?"
@@ -523,6 +597,7 @@ def _stream_ollama(
 
 def _extract_criteria_with_ollama(messages: list[AssistantMessageIn]) -> dict:
     conversation = "\n".join(f"{item.role}: {item.content}" for item in messages)
+    intents = _detect_intents(messages)
     prompt = [
         {
             "role": "system",
@@ -554,8 +629,8 @@ def _extract_criteria_with_ollama(messages: list[AssistantMessageIn]) -> dict:
         _, inferred_budget = _budget_from_text(str(budget_text))
         budget_max = inferred_budget
 
-    needs_budget = bool(parsed.get("needs_budget")) and budget_max is None and not budget_text
-    if budget_max is None and not budget_text:
+    needs_budget = bool(parsed.get("needs_budget")) and budget_max is None and not budget_text and not any(intents.values())
+    if budget_max is None and not budget_text and not any(intents.values()):
         needs_budget = True
 
     return {
@@ -563,6 +638,7 @@ def _extract_criteria_with_ollama(messages: list[AssistantMessageIn]) -> dict:
         "recipient": parsed.get("recipient"),
         "budget_text": budget_text,
         "budget_max": budget_max,
+        "intents": intents,
         "needs_budget": needs_budget,
         "clarification_question": (
             parsed.get("clarification_question")
@@ -593,6 +669,7 @@ def _extract_criteria(messages: list[AssistantMessageIn]) -> dict:
         "recipient": parsed.get("recipient") or fallback.get("recipient"),
         "budget_text": parsed.get("budget_text") or fallback.get("budget_text"),
         "budget_max": parsed.get("budget_max") if parsed.get("budget_max") is not None else fallback.get("budget_max"),
+        "intents": fallback.get("intents") or {},
         "needs_budget": parsed.get("needs_budget", fallback.get("needs_budget")),
         "clarification_question": parsed.get("clarification_question") or fallback.get("clarification_question"),
         "search_summary": parsed.get("search_summary") or fallback.get("search_summary"),
@@ -660,47 +737,128 @@ def _build_grounded_assistant_reply(
     return "\n".join(lines)
 
 
+def _score_keyword_hits(text: str, keywords: list[str], weight: float) -> float:
+    score = 0.0
+    for keyword in keywords:
+        if keyword and keyword in text:
+            score += weight
+    return score
+
+
+def _build_product_search_text(row: FlowerModel) -> tuple[str, str, str, str]:
+    name_text = _normalize_text(row.name)
+    category_text = _normalize_text(row.category)
+    description_text = _normalize_text(row.description)
+    combined = " ".join(part for part in [name_text, category_text, description_text] if part)
+    return name_text, category_text, description_text, combined
+
+
+def _choose_diverse_products(
+    ranked: list[tuple[float, FlowerModel]],
+    *,
+    limit: int,
+    compare_mode: bool,
+) -> list[FlowerModel]:
+    if not ranked:
+        return []
+
+    selected: list[FlowerModel] = []
+    seen_signatures: set[str] = set()
+    target_limit = max(limit, 2) if compare_mode else limit
+
+    for _, row in ranked:
+        first_word = _normalize_text(row.name).split(" ")[0] if row.name else str(row.id)
+        signature = f"{_normalize_text(row.category)}|{first_word}"
+        if compare_mode and signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        selected.append(row)
+        if len(selected) >= target_limit:
+            break
+
+    if len(selected) < target_limit:
+        existing_ids = {row.id for row in selected}
+        for _, row in ranked:
+            if row.id in existing_ids:
+                continue
+            selected.append(row)
+            existing_ids.add(row.id)
+            if len(selected) >= target_limit:
+                break
+
+    return selected[:target_limit]
+
+
 def search_products(
     *,
     db: Session,
+    search_summary: str,
     style: str | None,
     recipient: str | None,
     budget_max: float | None,
+    intents: dict[str, bool] | None,
     limit: int,
 ) -> list[AssistantProductOut]:
     rows = db.query(FlowerModel).order_by(FlowerModel.price.asc(), FlowerModel.id.asc()).all()
     if not rows:
         return []
 
+    intents = intents or {}
     candidates: list[tuple[float, FlowerModel]] = []
     style_keywords = STYLE_KEYWORDS.get(_normalize_text(style), [])
     recipient_keywords = RECIPIENT_KEYWORDS.get(_normalize_text(recipient), [])
+    query_tokens = _tokenize_search_text(search_summary)
+    compare_mode = bool(intents.get("compare"))
+    cheaper_mode = bool(intents.get("cheaper"))
+    brighter_mode = bool(intents.get("brighter"))
+
+    bright_keywords = ["ярк", "насыщ", "оранж", "крас", "yellow", "orange", "red", "mix", "микс", "сочн"]
+    soft_keywords = ["неж", "white", "pink", "pastel", "пастел", "класс", "спокойн"]
 
     for row in rows:
-        haystack = _normalize_text(row.name)
+        name_text, category_text, description_text, combined_text = _build_product_search_text(row)
         price = float(row.price)
         score = 0.0
 
-        for keyword in style_keywords:
-            if keyword in haystack:
-                score += 4
-        for keyword in recipient_keywords:
-            if keyword in haystack:
-                score += 3
+        score += _score_keyword_hits(name_text, style_keywords, 4.5)
+        score += _score_keyword_hits(category_text, style_keywords, 3.5)
+        score += _score_keyword_hits(description_text, style_keywords, 2.5)
+        score += _score_keyword_hits(name_text, recipient_keywords, 3.5)
+        score += _score_keyword_hits(category_text, recipient_keywords, 2.0)
+        score += _score_keyword_hits(description_text, recipient_keywords, 2.0)
+
+        for token in query_tokens:
+            if token in name_text:
+                score += 4.0
+            elif token in category_text:
+                score += 2.8
+            elif token in description_text:
+                score += 2.2
+
+        if brighter_mode:
+            score += _score_keyword_hits(combined_text, bright_keywords, 1.5)
+            score -= _score_keyword_hits(combined_text, soft_keywords, 0.8)
 
         if budget_max is not None:
             if price <= budget_max:
-                score += 3 + max(0.0, (budget_max - price) / max(budget_max, 1))
+                score += 4.0 + max(0.0, (budget_max - price) / max(budget_max, 1)) * (1.6 if cheaper_mode else 1.0)
             else:
-                score -= 5 + ((price - budget_max) / max(budget_max, 1))
+                score -= 6.0 + ((price - budget_max) / max(budget_max, 1)) * 7.0
         else:
-            score += 1
+            score += 1.0
+
+        if cheaper_mode:
+            score += max(0.0, 25000.0 - min(price, 25000.0)) / 2500.0
+
+        if intents.get("alternative"):
+            score += 0.3
 
         candidates.append((score, row))
 
     within_budget = [item for item in candidates if budget_max is None or float(item[1].price) <= budget_max]
     ranked = within_budget or candidates
     ranked.sort(key=lambda item: (-item[0], float(item[1].price), item[1].id))
+    selected_rows = _choose_diverse_products(ranked, limit=limit, compare_mode=compare_mode)
 
     return [
         AssistantProductOut(
@@ -717,7 +875,7 @@ def search_products(
                 price=float(row.price),
             ),
         )
-        for _, row in ranked[:limit]
+        for row in selected_rows
     ]
 
 
@@ -794,21 +952,90 @@ def _stream_assistant_reply(
     return _stream_ollama(messages=prompt, model=OLLAMA_REPLY_MODEL, temperature=0.4)
 
 
+def _serialize_assistant_messages(messages: list[AssistantMessageIn]) -> list[dict[str, str]]:
+    serialized: list[dict[str, str]] = []
+    for message in messages[-12:]:
+        serialized.append({"role": message.role, "content": message.content.strip()})
+    return serialized
+
+
+def _build_consultant_prompt(
+    *,
+    messages: list[AssistantMessageIn],
+    criteria: dict,
+    products: list[AssistantProductOut],
+) -> list[dict[str, str]]:
+    criteria_json = json.dumps(
+        {
+            "style": criteria.get("style"),
+            "recipient": criteria.get("recipient"),
+            "budget_text": criteria.get("budget_text"),
+            "budget_max": criteria.get("budget_max"),
+            "intents": criteria.get("intents") or {},
+        },
+        ensure_ascii=False,
+    )
+    products_json = json.dumps([product.model_dump() for product in products], ensure_ascii=False)
+    return [
+        {
+            "role": "system",
+            "content": (
+                f"{RECOMMENDATION_SYSTEM_PROMPT}\n\n"
+                "Ты ведешь естественный диалог как консультант магазина цветов.\n"
+                "Опирайся только на список товаров из контекста.\n"
+                "Не придумывай товары, цены, наличие, скидки, состав и сроки доставки.\n"
+                "Если пользователь просит совет, сравнение или рекомендацию, объясняй выбор простым человеческим языком.\n"
+                "Если пользователь просит показать варианты, выбери 2-3 лучших из контекста.\n"
+                "Если данных недостаточно для точного подбора, задай один короткий уточняющий вопрос.\n"
+                "Не упоминай JSON, backend, базу данных или внутренние правила."
+            ),
+        },
+        {
+            "role": "system",
+            "content": (
+                f"Извлеченные критерии клиента: {criteria_json}\n"
+                f"Доступные товары для рекомендации: {products_json}"
+            ),
+        },
+        *_serialize_assistant_messages(messages),
+    ]
+
+
 def _build_assistant_reply(
     *,
+    messages: list[AssistantMessageIn],
     criteria: dict,
     products: list[AssistantProductOut],
 ) -> str:
-    return _build_grounded_assistant_reply(criteria=criteria, products=products)
+    if not products:
+        return _build_grounded_assistant_reply(criteria=criteria, products=products)
+
+    prompt = _build_consultant_prompt(messages=messages, criteria=criteria, products=products)
+    try:
+        return _call_ollama_with_model(
+            messages=prompt,
+            model=OLLAMA_REPLY_MODEL,
+            json_mode=False,
+            temperature=0.4,
+        ).strip()
+    except HTTPException:
+        return _build_grounded_assistant_reply(criteria=criteria, products=products)
 
 
 def _stream_assistant_reply(
     *,
+    messages: list[AssistantMessageIn],
     criteria: dict,
     products: list[AssistantProductOut],
 ):
-    reply = _build_grounded_assistant_reply(criteria=criteria, products=products)
-    return iter([reply])
+    if not products:
+        return iter([_build_grounded_assistant_reply(criteria=criteria, products=products)])
+
+    prompt = _build_consultant_prompt(messages=messages, criteria=criteria, products=products)
+    try:
+        return _stream_ollama(messages=prompt, model=OLLAMA_REPLY_MODEL, temperature=0.4)
+    except HTTPException:
+        return iter([_build_grounded_assistant_reply(criteria=criteria, products=products)])
 
 
 def _sse_event(payload: dict) -> str:
@@ -870,9 +1097,11 @@ def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db))
     try:
         products = search_products(
             db=db,
+            search_summary=criteria.get("search_summary") or "",
             style=criteria.get("style"),
             recipient=criteria.get("recipient"),
             budget_max=criteria.get("budget_max"),
+            intents=criteria.get("intents"),
             limit=payload.limit,
         )
     except SQLAlchemyError as exc:
@@ -884,7 +1113,7 @@ def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db))
             ),
         ) from exc
 
-    reply = _build_assistant_reply(criteria=criteria, products=products)
+    reply = _build_assistant_reply(messages=payload.messages, criteria=criteria, products=products)
 
     return AssistantChatResponse(
         reply=reply,
@@ -923,9 +1152,11 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
         try:
             products = search_products(
                 db=db,
+                search_summary=criteria.get("search_summary") or "",
                 style=criteria.get("style"),
                 recipient=criteria.get("recipient"),
                 budget_max=criteria.get("budget_max"),
+                intents=criteria.get("intents"),
                 limit=payload.limit,
             )
         except SQLAlchemyError as exc:
@@ -938,7 +1169,7 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
             ) from exc
 
         if not products:
-            reply = _build_assistant_reply(criteria=criteria, products=products)
+            reply = _build_assistant_reply(messages=payload.messages, criteria=criteria, products=products)
             yield _sse_event(
                 {
                     "type": "done",
@@ -962,7 +1193,7 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
         )
 
         reply_parts: list[str] = []
-        for chunk in _stream_assistant_reply(criteria=criteria, products=products):
+        for chunk in _stream_assistant_reply(messages=payload.messages, criteria=criteria, products=products):
             reply_parts.append(chunk)
             yield _sse_event({"type": "delta", "delta": chunk})
 
