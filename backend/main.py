@@ -1832,6 +1832,29 @@ def admin_delete_order(
     return {"deleted": True}
 
 
+@app.delete("/admin/orders", tags=["admin"])
+def admin_delete_all_orders(
+    admin: UserModel = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    order_count = db.query(OrderModel).count()
+    if order_count == 0:
+        return {"deleted": True, "orders": 0, "order_items": 0}
+
+    order_item_count = db.query(OrderItemModel).count()
+    db.query(OrderItemModel).delete(synchronize_session=False)
+    db.query(OrderModel).delete(synchronize_session=False)
+    db.commit()
+    _audit(
+        db=db,
+        actor=admin,
+        action="delete_all",
+        entity="order",
+        meta={"orders": order_count, "order_items": order_item_count},
+    )
+    return {"deleted": True, "orders": order_count, "order_items": order_item_count}
+
+
 @app.get("/admin/users", response_model=list[AdminUserOut], tags=["admin"])
 def admin_list_users(_: UserModel = Depends(require_admin), db: Session = Depends(get_db)) -> list[AdminUserOut]:
     users = db.query(UserModel).order_by(UserModel.id.asc()).all()
@@ -1909,7 +1932,24 @@ def admin_delete_user(user_id: int, admin: UserModel = Depends(require_admin), d
     user = db.query(UserModel).filter(UserModel.id == user_id).one_or_none()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete the current admin")
     before = {"id": user.id, "username": user.username, "role": user.role.value}
+
+    user_order_ids = [
+        row[0]
+        for row in db.query(OrderModel.id).filter(OrderModel.user_id == user.id).all()
+    ]
+    if user_order_ids:
+        db.query(OrderItemModel).filter(OrderItemModel.order_id.in_(user_order_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(OrderModel).filter(OrderModel.id.in_(user_order_ids)).delete(synchronize_session=False)
+    db.query(CartItemModel).filter(CartItemModel.user_id == user.id).delete(synchronize_session=False)
+    db.query(AuditLogModel).filter(AuditLogModel.actor_user_id == user.id).update(
+        {AuditLogModel.actor_user_id: None},
+        synchronize_session=False,
+    )
     db.delete(user)
     db.commit()
     _audit(
@@ -1921,3 +1961,81 @@ def admin_delete_user(user_id: int, admin: UserModel = Depends(require_admin), d
         before=before,
     )
     return {"deleted": True}
+
+
+@app.delete("/admin/users", tags=["admin"])
+def admin_delete_all_users(
+    admin: UserModel = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    users_to_delete = db.query(UserModel).filter(UserModel.id != admin.id).all()
+    if not users_to_delete:
+        return {"deleted": True, "users": 0, "orders": 0, "cart_items": 0}
+
+    user_ids = [user.id for user in users_to_delete]
+    order_ids = [
+        row[0]
+        for row in db.query(OrderModel.id).filter(OrderModel.user_id.in_(user_ids)).all()
+    ]
+    order_count = len(order_ids)
+    cart_count = db.query(CartItemModel).filter(CartItemModel.user_id.in_(user_ids)).count()
+
+    if order_ids:
+        db.query(OrderItemModel).filter(OrderItemModel.order_id.in_(order_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(OrderModel).filter(OrderModel.id.in_(order_ids)).delete(synchronize_session=False)
+    db.query(CartItemModel).filter(CartItemModel.user_id.in_(user_ids)).delete(synchronize_session=False)
+    db.query(AuditLogModel).filter(AuditLogModel.actor_user_id.in_(user_ids)).update(
+        {AuditLogModel.actor_user_id: None},
+        synchronize_session=False,
+    )
+    db.query(UserModel).filter(UserModel.id.in_(user_ids)).delete(synchronize_session=False)
+    db.commit()
+    _audit(
+        db=db,
+        actor=admin,
+        action="delete_all",
+        entity="user",
+        meta={"users": len(user_ids), "orders": order_count, "cart_items": cart_count},
+    )
+    return {"deleted": True, "users": len(user_ids), "orders": order_count, "cart_items": cart_count}
+
+
+@app.delete("/admin/flowers", tags=["admin"])
+def admin_delete_all_flowers(
+    admin: UserModel = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    flower_count = db.query(FlowerModel).count()
+    if flower_count == 0:
+        return {"deleted": True, "flowers": 0, "orders": 0, "cart_items": 0}
+
+    order_count = db.query(OrderModel).count()
+    cart_count = db.query(CartItemModel).count()
+    order_item_count = db.query(OrderItemModel).count()
+
+    db.query(CartItemModel).delete(synchronize_session=False)
+    db.query(OrderItemModel).delete(synchronize_session=False)
+    db.query(OrderModel).delete(synchronize_session=False)
+    db.query(FlowerModel).delete(synchronize_session=False)
+    db.commit()
+    _audit(
+        db=db,
+        actor=admin,
+        action="delete_all",
+        entity="flower",
+        meta={
+            "flowers": flower_count,
+            "orders": order_count,
+            "order_items": order_item_count,
+            "cart_items": cart_count,
+        },
+    )
+    return {
+        "deleted": True,
+        "flowers": flower_count,
+        "orders": order_count,
+        "order_items": order_item_count,
+        "cart_items": cart_count,
+    }

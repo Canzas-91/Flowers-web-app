@@ -70,12 +70,20 @@ export async function adminDeleteOrder(orderId) {
   return adminFetch(`/admin/orders/${orderId}`, { method: "DELETE" });
 }
 
+export async function adminDeleteAllOrders() {
+  return adminFetch("/admin/orders", { method: "DELETE" });
+}
+
 export async function adminListUsers() {
   return adminFetch("/admin/users");
 }
 
 export async function adminDeleteUser(userId) {
   return adminFetch(`/admin/users/${userId}`, { method: "DELETE" });
+}
+
+export async function adminDeleteAllUsers() {
+  return adminFetch("/admin/users", { method: "DELETE" });
 }
 
 export async function adminListProducts() {
@@ -110,6 +118,10 @@ export async function adminUpdateProduct(id, { name, description, category, pric
 
 export async function adminDeleteProduct(id) {
   return adminFetch(`/admin/flowers/${id}`, { method: "DELETE" });
+}
+
+export async function adminDeleteAllProducts() {
+  return adminFetch("/admin/flowers", { method: "DELETE" });
 }
 
 export async function adminListAudit({ limit = 100 } = {}) {

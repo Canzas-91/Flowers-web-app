@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import "../admin.css";
-import { adminDeleteOrder, adminListOrders, adminUpdateOrderStatus } from "../api/adminApi";
+import {
+  adminDeleteAllOrders,
+  adminDeleteOrder,
+  adminListOrders,
+  adminUpdateOrderStatus,
+} from "../api/adminApi";
 
 const statusMeta = {
   new: { label: "СОЗДАН", badge: "adminBadgeWarn" },
@@ -20,6 +25,7 @@ export function AdminOrdersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -70,6 +76,22 @@ export function AdminOrdersPage() {
     }
   };
 
+  const onDeleteAllOrders = async () => {
+    const ok = window.confirm("Delete all orders?");
+    if (!ok) return;
+
+    setError(null);
+    setIsDeletingAll(true);
+    try {
+      await adminDeleteAllOrders();
+      setOrders([]);
+    } catch (err) {
+      setError(err?.message ?? "Failed to delete all orders.");
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
   return (
     <div className="adminGrid">
       <div className="adminCard adminCol12">
@@ -82,6 +104,14 @@ export function AdminOrdersPage() {
           </div>
 
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button
+              type="button"
+              className="adminBtn adminBadgeDanger"
+              onClick={onDeleteAllOrders}
+              disabled={isLoading || isDeletingAll}
+            >
+              {isDeletingAll ? "Deleting..." : "Delete all orders"}
+            </button>
             <div className="adminField" style={{ marginTop: 0, minWidth: 180 }}>
               <label htmlFor="statusFilter">Status</label>
               <select
