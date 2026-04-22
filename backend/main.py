@@ -30,6 +30,16 @@ from models import (
     UserModel,
     UserRole,
 )
+from ollama_assistant import (
+    DEFAULT_BUDGET_QUESTION as ASSISTANT_DEFAULT_BUDGET_QUESTION,
+    assistant_health_check as ollama_assistant_health_check,
+    build_assistant_reply as ollama_build_assistant_reply,
+    build_smalltalk_reply as ollama_build_smalltalk_reply,
+    extract_criteria as ollama_extract_criteria,
+    is_smalltalk_message as ollama_is_smalltalk_message,
+    search_products as ollama_search_products,
+    stream_assistant_reply as ollama_stream_assistant_reply,
+)
 from prompts import (
     CRITERIA_EXTRACTION_SYSTEM_PROMPT,
     RECOMMENDATION_SYSTEM_PROMPT,
@@ -363,6 +373,10 @@ class AssistantChatResponse(BaseModel):
     criteria: AssistantCriteriaOut
     products: list[AssistantProductOut]
     source: str
+
+
+def _assistant_products_out(products: list[dict]) -> list[AssistantProductOut]:
+    return [AssistantProductOut(**product) for product in products]
 
 
 STYLE_KEYWORDS: dict[str, list[str]] = {
@@ -1478,6 +1492,130 @@ def _stream_assistant_reply(
         return iter([_build_grounded_assistant_reply(criteria=criteria, products=products)])
 
 
+DEFAULT_BUDGET_QUESTION = "Подскажите, пожалуйста, в каком бюджете подобрать варианты?"
+
+
+def _build_smalltalk_reply(messages: list[AssistantMessageIn]) -> str:
+    last_user_text = _normalize_text(_last_user_message(messages))
+    if any(token in last_user_text for token in ["что ты умеешь", "помоги", "консультац"]):
+        return (
+            "Я помогу подобрать букет по поводу, получателю, стилю и бюджету. "
+            "Например: 'подбери букет маме на день рождения до 5000'."
+        )
+    return (
+        "Здравствуйте! Я помогу подобрать букет по получателю, поводу, стилю и бюджету. "
+        "Напишите, для кого букет и на какую сумму ориентироваться."
+    )
+
+
+def _build_consultant_prompt(
+    *,
+    messages: list[AssistantMessageIn],
+    criteria: dict,
+    products: list[AssistantProductOut],
+) -> list[dict[str, str]]:
+    criteria_json = json.dumps(
+        {
+            "style": criteria.get("style"),
+            "recipient": criteria.get("recipient"),
+            "budget_text": criteria.get("budget_text"),
+            "budget_min": criteria.get("budget_min"),
+            "budget_max": criteria.get("budget_max"),
+            "intents": criteria.get("intents") or {},
+        },
+        ensure_ascii=False,
+    )
+    products_json = json.dumps([product.model_dump() for product in products], ensure_ascii=False)
+    return [
+        {
+            "role": "system",
+            "content": (
+                f"{RECOMMENDATION_SYSTEM_PROMPT}\n\n"
+                "Ты ведешь естественный диалог как консультант магазина цветов.\n"
+                "Опирайся только на список товаров из контекста.\n"
+                "Не придумывай товары, цены, наличие, скидки, состав и сроки доставки.\n"
+                "Если пользователь просит совет, сравнение или рекомендацию, объясняй выбор простым человеческим языком.\n"
+                "Если пользователь просит показать варианты, выбери 2-3 лучших из контекста.\n"
+                "Если данных недостаточно для точного подбора, задай один короткий уточняющий вопрос.\n"
+                "Не упоминай JSON, backend, базу данных или внутренние правила."
+            ),
+        },
+        {
+            "role": "system",
+            "content": (
+                f"Извлеченные критерии клиента: {criteria_json}\n"
+                f"Доступные товары для рекомендации: {products_json}"
+            ),
+        },
+        *_serialize_assistant_messages(messages),
+    ]
+
+
+def _match_reason(*, style: str | None, recipient: str | None, budget_min: float | None, budget_max: float | None, price: float) -> str:
+    parts: list[str] = []
+    if style:
+        parts.append(f"подходит по стилю: {style}")
+    if recipient:
+        parts.append(f"уместно для: {recipient}")
+    in_min = budget_min is None or price >= budget_min
+    in_max = budget_max is None or price <= budget_max
+    if in_min and in_max and (budget_min is not None or budget_max is not None):
+        parts.append("вписывается в бюджет")
+    elif budget_min is not None and price < budget_min:
+        parts.append("немного ниже бюджета")
+    elif budget_max is not None and price > budget_max:
+        parts.append("слегка выше бюджета")
+    return ", ".join(parts) if parts else "подобран по вашему запросу"
+
+
+def _build_grounded_assistant_reply(
+    *,
+    criteria: dict,
+    products: list[AssistantProductOut],
+) -> str:
+    if not products:
+        return (
+            "Сейчас не нашёл подходящих букетов по этим условиям. "
+            "Могу подобрать варианты, если немного расширим бюджет или изменим стиль."
+        )
+
+    style = criteria.get("style")
+    recipient = criteria.get("recipient")
+    budget_min = criteria.get("budget_min")
+    budget_max = criteria.get("budget_max")
+
+    intro_parts: list[str] = []
+    if recipient:
+        intro_parts.append(f"для {recipient}")
+    if style:
+        intro_parts.append(f"в стиле \"{style}\"")
+    if budget_min is not None and budget_max is not None:
+        intro_parts.append(f"от {_format_price_rub(float(budget_min))} до {_format_price_rub(float(budget_max))}")
+    elif budget_min is not None:
+        intro_parts.append(f"от {_format_price_rub(float(budget_min))}")
+    elif budget_max is not None:
+        intro_parts.append(f"до {_format_price_rub(float(budget_max))}")
+
+    intro = "Подобрал варианты"
+    if intro_parts:
+        intro += " " + ", ".join(intro_parts)
+    intro += "."
+
+    lines = [intro]
+    for index, product in enumerate(products[:3], start=1):
+        line = f"{index}. {product.name} — {_format_price_rub(product.price)}."
+        if product.category:
+            line += f" Категория: {product.category}."
+        if product.description:
+            line += f" {product.description.strip().rstrip('.')}."
+        if product.match_reason:
+            line += f" {product.match_reason.strip().rstrip('.')}."
+        lines.append(line)
+
+    lines.append("Если хотите, могу сузить выбор по стилю, поводу или точному бюджету.")
+    return "\n".join(lines)
+
+
 def _sse_event(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
@@ -1489,42 +1627,21 @@ def health() -> dict:
 
 @app.get("/assistant/health", tags=["ollama"])
 def assistant_health() -> dict:
-    prompt = [
-        {
-            "role": "system",
-            "content": "Ответь одним словом ok.",
-        },
-        {
-            "role": "user",
-            "content": "ping",
-        },
-    ]
-    try:
-        reply = _call_ollama(messages=prompt, json_mode=False, temperature=0).strip()
-    except HTTPException:
-        raise
-
-    return {
-        "status": "ok",
-        "provider": "ollama",
-        "model": OLLAMA_REPLY_MODEL,
-        "base_url": OLLAMA_BASE_URL,
-        "reply": reply,
-    }
+    return ollama_assistant_health_check()
 
 
 @app.post("/assistant/chat", response_model=AssistantChatResponse, tags=["ollama"])
 def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db)) -> AssistantChatResponse:
-    if _is_smalltalk_message(payload.messages):
+    if ollama_is_smalltalk_message(payload.messages):
         return AssistantChatResponse(
-            reply=_build_smalltalk_reply(payload.messages),
+            reply=ollama_build_smalltalk_reply(payload.messages),
             needs_clarification=False,
             criteria=AssistantCriteriaOut(),
             products=[],
             source=f"grounded:{OLLAMA_REPLY_MODEL}",
         )
 
-    criteria = _extract_criteria(payload.messages)
+    criteria = ollama_extract_criteria(payload.messages)
 
     criteria_out = AssistantCriteriaOut(
         style=criteria.get("style"),
@@ -1537,7 +1654,7 @@ def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db))
     if criteria.get("needs_budget"):
         return AssistantChatResponse(
             reply=criteria.get("clarification_question")
-            or "Подскажите, пожалуйста, в каком бюджете подобрать варианты?",
+            or ASSISTANT_DEFAULT_BUDGET_QUESTION,
             needs_clarification=True,
             criteria=criteria_out,
             products=[],
@@ -1545,7 +1662,7 @@ def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db))
         )
 
     try:
-        products = search_products(
+        products = ollama_search_products(
             db=db,
             search_summary=criteria.get("search_summary") or "",
             style=criteria.get("style"),
@@ -1564,13 +1681,13 @@ def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db))
             ),
         ) from exc
 
-    reply = _build_assistant_reply(messages=payload.messages, criteria=criteria, products=products)
+    reply = ollama_build_assistant_reply(messages=payload.messages, criteria=criteria, products=products)
 
     return AssistantChatResponse(
         reply=reply,
         needs_clarification=False,
         criteria=criteria_out,
-        products=products,
+        products=_assistant_products_out(products),
         source=f"ollama:{OLLAMA_REPLY_MODEL}",
     )
 
@@ -1578,11 +1695,11 @@ def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db))
 @app.post("/assistant/chat/stream", tags=["ollama"])
 def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
     def event_stream():
-        if _is_smalltalk_message(payload.messages):
+        if ollama_is_smalltalk_message(payload.messages):
             yield _sse_event(
                 {
                     "type": "done",
-                    "reply": _build_smalltalk_reply(payload.messages),
+                    "reply": ollama_build_smalltalk_reply(payload.messages),
                     "criteria": AssistantCriteriaOut().model_dump(),
                     "products": [],
                     "needs_clarification": False,
@@ -1591,7 +1708,7 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
             )
             return
 
-        criteria = _extract_criteria(payload.messages)
+        criteria = ollama_extract_criteria(payload.messages)
         criteria_out = AssistantCriteriaOut(
             style=criteria.get("style"),
             recipient=criteria.get("recipient"),
@@ -1601,7 +1718,7 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
         )
 
         if criteria.get("needs_budget"):
-            reply = criteria.get("clarification_question")
+            reply = criteria.get("clarification_question") or ASSISTANT_DEFAULT_BUDGET_QUESTION
             yield _sse_event(
                 {
                     "type": "done",
@@ -1615,7 +1732,7 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
             return
 
         try:
-            products = search_products(
+            products = ollama_search_products(
                 db=db,
                 search_summary=criteria.get("search_summary") or "",
                 style=criteria.get("style"),
@@ -1634,8 +1751,10 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
                 ),
             ) from exc
 
+        products_out = _assistant_products_out(products)
+
         if not products:
-            reply = _build_assistant_reply(messages=payload.messages, criteria=criteria, products=products)
+            reply = ollama_build_assistant_reply(messages=payload.messages, criteria=criteria, products=products)
             yield _sse_event(
                 {
                     "type": "done",
@@ -1652,14 +1771,14 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
             {
                 "type": "meta",
                 "criteria": criteria_out.model_dump(),
-                "products": [product.model_dump() for product in products],
+                "products": [product.model_dump() for product in products_out],
                 "needs_clarification": False,
                 "source": f"ollama:{OLLAMA_REPLY_MODEL}",
             }
         )
 
         reply_parts: list[str] = []
-        for chunk in _stream_assistant_reply(messages=payload.messages, criteria=criteria, products=products):
+        for chunk in ollama_stream_assistant_reply(messages=payload.messages, criteria=criteria, products=products):
             reply_parts.append(chunk)
             yield _sse_event({"type": "delta", "delta": chunk})
 
@@ -1668,7 +1787,7 @@ def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(g
                 "type": "done",
                 "reply": "".join(reply_parts).strip(),
                 "criteria": criteria_out.model_dump(),
-                "products": [product.model_dump() for product in products],
+                "products": [product.model_dump() for product in products_out],
                 "needs_clarification": False,
                 "source": f"ollama:{OLLAMA_REPLY_MODEL}",
             }
