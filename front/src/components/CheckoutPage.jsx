@@ -6,6 +6,8 @@ const paymentOptions = [
   { id: "cash", label: "Наличными курьеру" },
 ];
 
+const formatPrice = (value) => `${Number(value).toLocaleString("ru-RU")} ₽`;
+
 function CheckoutPage({ items, onBackToCart, onSubmitOrder }) {
   const [address, setAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState(paymentOptions[0].id);
@@ -90,14 +92,14 @@ function CheckoutPage({ items, onBackToCart, onSubmitOrder }) {
                       <h3>{item.title}</h3>
                       <p>{item.qty} шт.</p>
                     </div>
-                    <strong>{item.price * item.qty} ₽</strong>
+                    <strong>{formatPrice(item.price * item.qty)}</strong>
                   </article>
                 ))}
               </div>
 
               <div className="checkout-total-row">
                 <span>{totalCount} товар{totalCount === 1 ? "" : totalCount < 5 ? "а" : "ов"}</span>
-                <strong>{total} ₽</strong>
+                <strong>{formatPrice(total)}</strong>
               </div>
             </div>
           </aside>

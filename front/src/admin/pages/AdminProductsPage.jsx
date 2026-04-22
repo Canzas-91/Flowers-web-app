@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "../admin.css";
 import {
   adminCreateProduct,
+  adminDeleteAllProducts,
   adminDeleteProduct,
   adminListProducts,
   adminUpdateProduct,
@@ -22,6 +23,7 @@ export function AdminProductsPage() {
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
 
   const [draft, setDraft] = useState({
     name: "",
@@ -118,12 +120,43 @@ export function AdminProductsPage() {
     }
   };
 
+  const onDeleteAll = async () => {
+    const ok = window.confirm(
+      "Delete all products? This will also clear carts and remove all orders linked to these products."
+    );
+    if (!ok) return;
+
+    setError(null);
+    setIsDeletingAll(true);
+    try {
+      await adminDeleteAllProducts();
+      setProducts([]);
+      resetDraft();
+    } catch (err) {
+      setError(err?.message ?? "Failed to delete all products.");
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
   return (
     <div className="adminGrid">
       <div className="adminCard adminCol12">
-        <div style={{ fontWeight: 800, fontSize: 18 }}>Products</div>
-        <div style={{ color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
-          Create, edit and delete bouquets.
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>Products</div>
+            <div style={{ color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
+              Create, edit and delete bouquets.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="adminBtn adminBadgeDanger"
+            onClick={onDeleteAll}
+            disabled={isLoading || isDeletingAll}
+          >
+            {isDeletingAll ? "Deleting..." : "Delete all products"}
+          </button>
         </div>
 
         {error ? (

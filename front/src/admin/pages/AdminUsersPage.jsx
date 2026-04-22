@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import "../admin.css";
-import { adminDeleteUser, adminListUsers } from "../api/adminApi";
+import { adminDeleteAllUsers, adminDeleteUser, adminListUsers } from "../api/adminApi";
 
 export function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -32,6 +33,7 @@ export function AdminUsersPage() {
   const onDelete = async (user) => {
     const ok = window.confirm(`Delete user "${user.username}"?`);
     if (!ok) return;
+    setError(null);
     try {
       await adminDeleteUser(user.id);
       setUsers((prev) => prev.filter((u) => u.id !== user.id));
@@ -40,12 +42,43 @@ export function AdminUsersPage() {
     }
   };
 
+  const onDeleteAll = async () => {
+    const ok = window.confirm(
+      "Delete all users except the current admin? Their carts and orders will be removed too."
+    );
+    if (!ok) return;
+
+    setError(null);
+    setIsDeletingAll(true);
+    try {
+      await adminDeleteAllUsers();
+      const rows = await adminListUsers();
+      setUsers(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      setError(err?.message ?? "Failed to delete all users.");
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
   return (
     <div className="adminGrid">
       <div className="adminCard adminCol12">
-        <div style={{ fontWeight: 800, fontSize: 18 }}>Users</div>
-        <div style={{ color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
-          View and manage accounts.
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>Users</div>
+            <div style={{ color: "rgba(255,255,255,0.68)", marginTop: 4 }}>
+              View and manage accounts.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="adminBtn adminBadgeDanger"
+            onClick={onDeleteAll}
+            disabled={isLoading || isDeletingAll}
+          >
+            {isDeletingAll ? "Deleting..." : "Delete all users"}
+          </button>
         </div>
 
         {error ? (
