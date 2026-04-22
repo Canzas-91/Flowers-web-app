@@ -468,6 +468,59 @@ def _detect_intents(messages: list[AssistantMessageIn]) -> dict[str, bool]:
     }
 
 
+def _is_smalltalk_message(messages: list[AssistantMessageIn]) -> bool:
+    last_user_text = _normalize_text(_last_user_message(messages))
+    if not last_user_text:
+        return False
+
+    exact_matches = {
+        "привет", "здравствуй", "здравствуйте", "добрый день", "добрый вечер",
+        "доброе утро", "hi", "hello", "hey",
+    }
+    if last_user_text in exact_matches:
+        return True
+
+    smalltalk_markers = [
+        "что ты умеешь", "помоги выбрать", "помоги подобрать", "можешь помочь",
+        "нужна помощь", "посоветуй букет", "хочу консультацию",
+    ]
+    has_request_markers = any(
+        marker in last_user_text
+        for marker in ["букет", "цвет", "роз", "тюльпан", "хризант", "пион", "маме", "девуш", "жене", "коллеге"]
+    )
+    return any(marker in last_user_text for marker in smalltalk_markers) and not has_request_markers
+
+
+def _build_smalltalk_reply(messages: list[AssistantMessageIn]) -> str:
+    last_user_text = _normalize_text(_last_user_message(messages))
+    if any(token in last_user_text for token in ["что ты умеешь", "помоги", "консультац"]):
+        return (
+            "Я помогу подобрать букет по поводу, получателю, стилю и бюджету. "
+            "Например: 'подбери букет маме на день рождения до 5000'."
+        )
+    return (
+        "Здравствуйте! Я помогу подобрать букет по получателю, поводу, стилю и бюджету. "
+        "Напишите, для кого букет и на какую сумму ориентироваться."
+    )
+
+
+def _should_prefer_grounded_reply() -> bool:
+    model_name = _normalize_text(OLLAMA_REPLY_MODEL)
+    return "1b" in model_name or "3b" in model_name
+
+
+def _reply_looks_unreliable(reply: str, *, budget_max: float | None) -> bool:
+    normalized = _normalize_text(reply)
+    latin_words = re.findall(r"\b[a-zA-Z]{3,}\b", reply)
+    if latin_words:
+        return True
+    if budget_max is None and ("любой бюджет" in normalized or "в любой бюджет" in normalized):
+        return True
+    if "не могу" in normalized and "однако" in normalized:
+        return True
+    return False
+
+
 def _extract_criteria_fallback(messages: list[AssistantMessageIn]) -> dict:
     conversation = " ".join(message.content for message in messages)
     lowered = _normalize_text(conversation)
@@ -1010,14 +1063,20 @@ def _build_assistant_reply(
     if not products:
         return _build_grounded_assistant_reply(criteria=criteria, products=products)
 
+    if _should_prefer_grounded_reply():
+        return _build_grounded_assistant_reply(criteria=criteria, products=products)
+
     prompt = _build_consultant_prompt(messages=messages, criteria=criteria, products=products)
     try:
-        return _call_ollama_with_model(
+        reply = _call_ollama_with_model(
             messages=prompt,
             model=OLLAMA_REPLY_MODEL,
             json_mode=False,
             temperature=0.4,
         ).strip()
+        if _reply_looks_unreliable(reply, budget_max=criteria.get("budget_max")):
+            return _build_grounded_assistant_reply(criteria=criteria, products=products)
+        return reply
     except HTTPException:
         return _build_grounded_assistant_reply(criteria=criteria, products=products)
 
@@ -1029,6 +1088,9 @@ def _stream_assistant_reply(
     products: list[AssistantProductOut],
 ):
     if not products:
+        return iter([_build_grounded_assistant_reply(criteria=criteria, products=products)])
+
+    if _should_prefer_grounded_reply():
         return iter([_build_grounded_assistant_reply(criteria=criteria, products=products)])
 
     prompt = _build_consultant_prompt(messages=messages, criteria=criteria, products=products)
@@ -1075,6 +1137,15 @@ def assistant_health() -> dict:
 
 @app.post("/assistant/chat", response_model=AssistantChatResponse, tags=["ollama"])
 def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db)) -> AssistantChatResponse:
+    if _is_smalltalk_message(payload.messages):
+        return AssistantChatResponse(
+            reply=_build_smalltalk_reply(payload.messages),
+            needs_clarification=False,
+            criteria=AssistantCriteriaOut(),
+            products=[],
+            source=f"grounded:{OLLAMA_REPLY_MODEL}",
+        )
+
     criteria = _extract_criteria(payload.messages)
 
     criteria_out = AssistantCriteriaOut(
@@ -1127,6 +1198,19 @@ def assistant_chat(payload: AssistantChatRequest, db: Session = Depends(get_db))
 @app.post("/assistant/chat/stream", tags=["ollama"])
 def assistant_chat_stream(payload: AssistantChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
     def event_stream():
+        if _is_smalltalk_message(payload.messages):
+            yield _sse_event(
+                {
+                    "type": "done",
+                    "reply": _build_smalltalk_reply(payload.messages),
+                    "criteria": AssistantCriteriaOut().model_dump(),
+                    "products": [],
+                    "needs_clarification": False,
+                    "source": f"grounded:{OLLAMA_REPLY_MODEL}",
+                }
+            )
+            return
+
         criteria = _extract_criteria(payload.messages)
         criteria_out = AssistantCriteriaOut(
             style=criteria.get("style"),
