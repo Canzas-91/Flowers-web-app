@@ -1240,6 +1240,71 @@ def search_products(
     ]
 
 
+def _match_reason(*, style: str | None, recipient: str | None, budget_min: float | None, budget_max: float | None, price: float) -> str:
+    parts: list[str] = []
+    if style:
+        parts.append(f"подходит по стилю: {style}")
+    if recipient:
+        parts.append(f"уместно для: {recipient}")
+    in_min = budget_min is None or price >= budget_min
+    in_max = budget_max is None or price <= budget_max
+    if in_min and in_max and (budget_min is not None or budget_max is not None):
+        parts.append("вписывается в бюджет")
+    elif budget_min is not None and price < budget_min:
+        parts.append("немного ниже бюджета")
+    elif budget_max is not None and price > budget_max:
+        parts.append("слегка выше бюджета")
+    return ", ".join(parts) if parts else "подобран по вашему запросу"
+
+
+def _build_grounded_assistant_reply(
+    *,
+    criteria: dict,
+    products: list[AssistantProductOut],
+) -> str:
+    if not products:
+        return (
+            "Сейчас не нашёл подходящих букетов по этим условиям. "
+            "Могу подобрать варианты, если немного расширим бюджет или изменим стиль."
+        )
+
+    style = criteria.get("style")
+    recipient = criteria.get("recipient")
+    budget_min = criteria.get("budget_min")
+    budget_max = criteria.get("budget_max")
+
+    intro_parts: list[str] = []
+    if recipient:
+        intro_parts.append(f"для {recipient}")
+    if style:
+        intro_parts.append(f"в стиле \"{style}\"")
+    if budget_min is not None and budget_max is not None:
+        intro_parts.append(f"от {_format_price_rub(float(budget_min))} до {_format_price_rub(float(budget_max))}")
+    elif budget_min is not None:
+        intro_parts.append(f"от {_format_price_rub(float(budget_min))}")
+    elif budget_max is not None:
+        intro_parts.append(f"до {_format_price_rub(float(budget_max))}")
+
+    intro = "Подобрал варианты"
+    if intro_parts:
+        intro += " " + ", ".join(intro_parts)
+    intro += "."
+
+    lines = [intro]
+    for index, product in enumerate(products[:3], start=1):
+        line = f"{index}. {product.name} — {_format_price_rub(product.price)}."
+        if product.category:
+            line += f" Категория: {product.category}."
+        if product.description:
+            line += f" {product.description.strip().rstrip('.')}."
+        if product.match_reason:
+            line += f" {product.match_reason.strip().rstrip('.')}."
+        lines.append(line)
+
+    lines.append("Если хотите, могу сузить выбор по стилю, поводу или точному бюджету.")
+    return "\n".join(lines)
+
+
 def _build_assistant_reply(
     *,
     criteria: dict,
