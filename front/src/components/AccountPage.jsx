@@ -12,7 +12,7 @@ function AccountPage({ user, cartItems, orders, onBackHome, onOpenCatalog, onLog
   const [activeTab, setActiveTab] = useState("profile");
   const totalItems = cartItems.reduce((sum, item) => sum + item.qty, 0);
   const totalPrice = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const usernameInitial = user?.username?.slice(0, 1).toUpperCase() ?? "U";
+  const usernameInitial = user?.username?.slice(0, 1).toUpperCase() ?? "Г";
 
   return (
     <section className="account-page" aria-label="Личный кабинет">

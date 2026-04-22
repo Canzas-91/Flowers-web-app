@@ -152,22 +152,6 @@ export function AdminAuditPage() {
                 {prettyJson(selected.after)}
               </pre>
             </div>
-            <div>
-              <div className="adminMetricLabel">Meta</div>
-              <pre
-                style={{
-                  margin: 0,
-                  marginTop: 6,
-                  padding: 10,
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(0,0,0,0.18)",
-                  overflowX: "auto",
-                }}
-              >
-                {prettyJson(selected.meta)}
-              </pre>
-            </div>
           </div>
         )}
       </div>
